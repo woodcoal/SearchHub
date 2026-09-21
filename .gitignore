@@ -4,5 +4,7 @@ web/dist/
 data/
 .env
 *.log
+*.err
 run.err
 .DS_Store
+package-lock.json
