@@ -118,21 +118,25 @@ function ProviderCard({ provider }: { provider: ProviderView }) {
       {keys.length === 0 ? (
         <div className="empty">尚未配置密钥，请到「密钥管理」添加</div>
       ) : (
-        <table className="table-stack">
+        <table className="table-stack table-fixed">
           <thead>
             <tr>
-              <th>密钥</th>
-              <th>状态</th>
-              <th>日 / 月 / 总用量</th>
-              <th>最近错误</th>
+              <th style={{ width: '24%' }}>密钥</th>
+              <th style={{ width: '17%' }}>状态</th>
+              <th style={{ width: '35%' }}>日/月/总用量</th>
+              <th style={{ width: '24%' }}>最近错误</th>
             </tr>
           </thead>
           <tbody>
             {keys.map((key) => (
               <tr key={key.id}>
                 <td data-label="密钥">
-                  <div>{key.label}</div>
-                  <div className="mono muted">{key.hint}</div>
+                  <div className="ellipsis" title={key.label}>
+                    {key.label}
+                  </div>
+                  <div className="mono muted ellipsis" title={key.hint}>
+                    {key.hint}
+                  </div>
                 </td>
                 <td data-label="状态">
                   <span
@@ -143,8 +147,15 @@ function ProviderCard({ provider }: { provider: ProviderView }) {
                     {key.enabled ? KEY_STATE_LABEL[key.state] : '已禁用'}
                   </span>
                 </td>
-                <td data-label="日 / 月 / 总用量" className="mono">
-                  {quotaText(key.usedToday, key.dailyQuota)} · {quotaText(key.usedMonth, key.monthlyQuota)} ·{' '}
+                <td
+                  data-label="日 / 月 / 总用量"
+                  className="mono"
+                  title={`日 ${quotaText(key.usedToday, key.dailyQuota)} · 月 ${quotaText(
+                    key.usedMonth,
+                    key.monthlyQuota,
+                  )} · 总 ${quotaText(key.usedTotal, key.totalQuota)}`}
+                >
+                  {quotaText(key.usedToday, key.dailyQuota)}·{quotaText(key.usedMonth, key.monthlyQuota)}·
                   {quotaText(key.usedTotal, key.totalQuota)}
                 </td>
                 <td data-label="最近错误" className="muted">

@@ -244,6 +244,12 @@ a {
   border: 1px solid var(--border);
   background: var(--panel-2);
   color: var(--muted);
+  /* 全站徽章（含各状态色）一律单行显示，不被压缩、不换行 */
+  white-space: nowrap;
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .badge.ok {
@@ -381,6 +387,22 @@ td {
 
 tr:last-child td {
   border-bottom: 0;
+}
+
+/* 固定列宽布局：列宽按比例自适应，单元格内容一律单行、超长省略 */
+.table-fixed {
+  table-layout: fixed;
+}
+
+.table-fixed th,
+.table-fixed td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-fixed td > .ellipsis {
+  max-width: 100%;
 }
 
 .empty {
@@ -1108,6 +1130,13 @@ tr:last-child td {
 }
 
 /* ==================== 响应式 ==================== */
+/* 供应商卡片内含表格，窄屏先变单列，保证列宽够用、内容不换行 */
+@media (max-width: 1300px) {
+  .provider-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 960px) {
   .grid-2 {
     grid-template-columns: minmax(0, 1fr);
@@ -1209,6 +1238,18 @@ tr:last-child td {
   .table-stack {
     display: block;
     white-space: normal;
+  }
+
+  /* 堆叠模式下取消固定布局，内容恢复可换行 */
+  .table-fixed {
+    table-layout: auto;
+  }
+
+  .table-fixed th,
+  .table-fixed td {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
   }
 
   .table-stack thead {
