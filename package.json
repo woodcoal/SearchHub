@@ -4,6 +4,16 @@
   "private": true,
   "type": "module",
   "description": "统一搜索网关：聚合 Serper / Exa 等多家搜索 API，统一协议、集中管理密钥、自动轮换与容灾切换",
+  "main": "dist/index.js",
+  "bin": {
+    "searchhub": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "web/dist",
+    "README.md",
+    ".env.example"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -12,13 +22,12 @@
     "dev:web": "vite --config web/vite.config.ts",
     "build": "tsc -p tsconfig.json && vite build --config web/vite.config.ts",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "fastify": "^5.2.0",
     "pino": "^9.6.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -26,6 +35,8 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.7"

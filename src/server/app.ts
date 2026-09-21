@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { extname, join, resolve } from 'node:path';
+import { dirname, extname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppConfig } from '../config.js';
@@ -277,8 +278,16 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
     { prefix: '/api/admin' },
   );
 
-  // 生产模式下托管管理界面构建产物
-  const distDir = resolve(process.cwd(), 'web/dist');
+  // 托管管理界面构建产物。全局安装时 cwd 是任意目录，
+  // 因此优先从包自身位置解析，再回退到当前目录（开发模式）。
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  // dist/server/app.js → 包根目录在两级之上；开发态（tsx 直接跑 src）同理
+  const distDir =
+    [
+      resolve(moduleDir, '../../web/dist'),
+      resolve(moduleDir, '../web/dist'),
+      resolve(process.cwd(), 'web/dist'),
+    ].find((dir) => existsSync(dir)) ?? resolve(moduleDir, '../../web/dist');
   app.get('/*', async (request, reply) => {
     if (!existsSync(distDir)) {
       return reply

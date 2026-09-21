@@ -28,6 +28,56 @@ npm run build                 # 编译后端到 dist/、前端到 web/dist/
 npm start                     # 单进程同时提供 API 与管理界面
 ```
 
+## 全局安装（CLI）
+
+```bash
+npm run build
+npm install -g .              # 安装到系统，得到 searchhub 命令
+searchhub start               # 任意目录执行即可启动
+```
+
+开发调试用 `npm link` 更好：会在全局与源码目录之间建立链接，改完代码 `npm run build` 后立刻生效，无需反复安装。
+
+```bash
+npm link                      # 只需执行一次
+npm run build                 # 之后每次改代码重新构建即可
+```
+
+卸载：`npm uninstall -g searchhub`
+
+### CLI 命令
+
+| 命令 | 说明 |
+|---|---|
+| `searchhub start` | 启动服务（默认命令，同时提供 API 与管理界面） |
+| `searchhub search "关键词"` | 直接调用统一搜索接口，不经过 HTTP |
+| `searchhub status` | 查看各供应商健康度与密钥状态 |
+| `searchhub keys list` | 列出所有供应商密钥 |
+| `searchhub keys add serper <密钥> --label 主key --qps 2` | 添加供应商密钥 |
+| `searchhub keys test serper <id\|标签>` | 测试单个密钥连通性 |
+| `searchhub keys remove serper <id\|标签>` | 删除供应商密钥 |
+| `searchhub apikey create <名称>` | 创建接入用 API Key（明文只显示一次） |
+| `searchhub apikey list` / `revoke <id>` | 列出 / 吊销 API Key |
+
+通用选项：`--port`、`--host`、`--data <数据文件路径>`、`--provider`、`--size`、`--json`。
+CLI 会自动读取当前目录下的 `.env`（不覆盖已有环境变量）。
+
+```bash
+searchhub start --port 9000 --data ./data/store.json
+searchhub search "openai" --size 5 --provider serper
+```
+
+### 发布到 npm 仓库
+
+```bash
+# 1. package.json 中移除 "private": true
+npm version patch
+npm publish                   # 会自动执行 prepublishOnly（即 npm run build）
+```
+
+发布内容由 `files` 字段控制，只包含 `dist/`、`web/dist/`、`README.md`、`.env.example`；
+`react` / `react-dom` 已放在 devDependencies，因为前端在构建期就打成了静态资源，运行时不需要。
+
 ## 认证体系
 
 ### 1. 管理后台：密码登录
