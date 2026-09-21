@@ -17,6 +17,20 @@ interface TestResult {
   results?: number;
 }
 
+/**
+ * 数字输入转成后端接受的取值：空值/非法值统一为 null（表示继承全局），
+ * 超出范围的自动夹到边界，避免保存时被参数校验拒绝。
+ */
+function num(
+  raw: string,
+  { int = false, min = 1, max = Number.MAX_SAFE_INTEGER }: { int?: boolean; min?: number; max?: number } = {},
+): number | null {
+  const value = Number(raw);
+  if (!raw.trim() || !Number.isFinite(value) || value < min) return null;
+  const bounded = Math.min(value, max);
+  return int ? Math.trunc(bounded) : bounded;
+}
+
 /** 折叠式操作菜单：默认只显示图标，避免操作栏过长 */
 function ActionMenu({ items }: { items: Array<{ key: string; icon: IconName; label: string; danger?: boolean; onPick: () => void }> }) {
   const ref = useRef<HTMLDetailsElement>(null);
@@ -252,16 +266,16 @@ function KeyRow({
           {view.reason && <div className="muted key-error">{view.reason}</div>}
         </td>
         <td data-label="QPS" className="mono">
-          {view.qps} {inherit(view.own.qps)}
+          {view.qps} {inherit(view.own?.qps ?? null)}
         </td>
         <td data-label="日配额" className="mono">
-          {view.usedToday}/{view.dailyQuota ?? '∞'} {inherit(view.own.dailyQuota)}
+          {view.usedToday}/{view.dailyQuota ?? '∞'} {inherit(view.own?.dailyQuota ?? null)}
         </td>
         <td data-label="月配额" className="mono">
-          {view.usedMonth}/{view.monthlyQuota ?? '∞'} {inherit(view.own.monthlyQuota)}
+          {view.usedMonth}/{view.monthlyQuota ?? '∞'} {inherit(view.own?.monthlyQuota ?? null)}
         </td>
         <td data-label="总配额" className="mono">
-          {view.usedTotal}/{view.totalQuota ?? '∞'} {inherit(view.own.totalQuota)}
+          {view.usedTotal}/{view.totalQuota ?? '∞'} {inherit(view.own?.totalQuota ?? null)}
         </td>
         <td data-label="操作" className="col-actions">
           <div className="row actions">
@@ -375,16 +389,16 @@ function EditKeyForm({
 }) {
   const [label, setLabel] = useState(view.label);
   const [value, setValue] = useState('');
-  const [qps, setQps] = useState(view.own.qps === null ? '' : String(view.own.qps));
-  const [daily, setDaily] = useState(view.own.dailyQuota === null ? '' : String(view.own.dailyQuota));
-  const [monthly, setMonthly] = useState(
-    view.own.monthlyQuota === null ? '' : String(view.own.monthlyQuota),
-  );
-  const [total, setTotal] = useState(view.own.totalQuota === null ? '' : String(view.own.totalQuota));
+  const ownText = (value: number | null | undefined) =>
+    value === null || value === undefined ? '' : String(value);
+  const [qps, setQps] = useState(ownText(view.own?.qps));
+  const [daily, setDaily] = useState(ownText(view.own?.dailyQuota));
+  const [monthly, setMonthly] = useState(ownText(view.own?.monthlyQuota));
+  const [total, setTotal] = useState(ownText(view.own?.totalQuota));
   const [enabled, setEnabled] = useState(view.enabled);
   const [saving, setSaving] = useState(false);
 
-  const toNumber = (raw: string): number | null => (raw.trim() ? Number(raw) : null);
+
 
   async function save() {
     setSaving(true);
@@ -392,10 +406,10 @@ function EditKeyForm({
       await api.patchKey(providerId, view.id, {
         label: label.trim() || undefined,
         enabled,
-        qps: toNumber(qps),
-        dailyQuota: toNumber(daily),
-        monthlyQuota: toNumber(monthly),
-        totalQuota: toNumber(total),
+        qps: num(qps, { min: 0.1, max: 100 }),
+        dailyQuota: num(daily, { int: true }),
+        monthlyQuota: num(monthly, { int: true }),
+        totalQuota: num(total, { int: true }),
         value: value.trim() || undefined,
       });
       await onSaved(
@@ -415,6 +429,7 @@ function EditKeyForm({
       <div className="row">
         <input
           placeholder="标签"
+          maxLength={64}
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           style={{ flex: '1 1 140px' }}
@@ -506,10 +521,10 @@ function AddKeyForm({
         providerId: provider.id,
         label: label.trim() || undefined,
         value: value.trim(),
-        qps: qps.trim() ? Number(qps) : null,
-        dailyQuota: quota.trim() ? Number(quota) : null,
-        monthlyQuota: monthly.trim() ? Number(monthly) : null,
-        totalQuota: total.trim() ? Number(total) : null,
+        qps: num(qps, { min: 0.1, max: 100 }),
+        dailyQuota: num(quota, { int: true }),
+        monthlyQuota: num(monthly, { int: true }),
+        totalQuota: num(total, { int: true }),
       });
       setLabel('');
       setValue('');
@@ -531,6 +546,7 @@ function AddKeyForm({
       <div className="row">
         <input
           placeholder={`标签，如 ${provider.id}-新key`}
+          maxLength={64}
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           style={{ flex: '1 1 160px' }}

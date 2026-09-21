@@ -1,9 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import type { AppConfig } from './config.js';
 import type { SearchHub } from './core/hub.js';
 import { AllProvidersFailedError } from './core/errors.js';
+import { createDailyLogDestination } from './logging.js';
 import { PROVIDERS } from './providers/index.js';
+import { createApiGuard } from './server/guards.js';
 
 export interface McpOptions {
   name: string;
@@ -150,6 +155,90 @@ export function buildMcpServer(hub: SearchHub, options: McpOptions): McpServer {
   );
 
   return server;
+}
+
+/**
+ * 以 Streamable HTTP 传输挂载 MCP 服务（无状态模式，便于远程部署与水平扩展）。
+ * 每个请求新建一次 server/transport，用完即关。
+ */
+export function registerMcpHttpRoutes(
+  app: FastifyInstance,
+  hub: SearchHub,
+  options: McpOptions,
+  preHandler?: unknown,
+): void {
+  const handler = async (request: any, reply: any) => {
+    const server = buildMcpServer(hub, options);
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    });
+
+    reply.hijack();
+    reply.raw.on('close', () => {
+      void transport.close();
+      void server.close();
+    });
+
+    try {
+      await server.connect(transport);
+      await transport.handleRequest(request.raw, reply.raw, request.body);
+    } catch (error) {
+      if (!reply.raw.headersSent) {
+        reply.raw.writeHead(500, { 'content-type': 'application/json' });
+      }
+      reply.raw.end(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          error: { code: -32603, message: `MCP 处理失败: ${(error as Error).message}` },
+          id: null,
+        }),
+      );
+    }
+  };
+
+  const methodNotAllowed = {
+    jsonrpc: '2.0',
+    error: { code: -32000, message: '无状态模式仅支持 POST /mcp' },
+    id: null,
+  };
+
+  app.post('/mcp', preHandler ? { preHandler: preHandler as never } : {}, handler);
+  app.get('/mcp', async (_request, reply) => reply.code(405).send(methodNotAllowed));
+  app.delete('/mcp', async (_request, reply) => reply.code(405).send(methodNotAllowed));
+}
+
+/** 独立进程里只提供 HTTP 形式的 MCP 服务（不暴露管理界面） */
+export async function startMcpHttp(
+  hub: SearchHub,
+  options: McpOptions,
+  config: AppConfig,
+  listen: { host: string; port: number; path: string },
+): Promise<FastifyInstance> {
+  const app = Fastify({
+    logger: {
+      level: config.logLevel,
+      stream: createDailyLogDestination({
+        getDir: () => config.logDir,
+        retentionDays: config.logRetentionDays,
+        toStdout: config.logToStdout,
+      }),
+    },
+  });
+
+  const apiGuard = createApiGuard(hub, config);
+  // 允许自定义路径（例如 /mcp 或 /api/mcp）
+  app.register(
+    async (scope) => {
+      registerMcpHttpRoutes(scope, hub, options, apiGuard);
+    },
+    { prefix: listen.path === '/mcp' ? '' : listen.path.replace(/\/mcp$/, '') },
+  );
+
+  app.get('/health', async () => ({ ok: true, transport: 'streamable-http' }));
+
+  await app.listen({ host: listen.host, port: listen.port });
+  return app;
 }
 
 /** 以 stdio 传输启动 MCP 服务（供 Claude Desktop / Cursor 等客户端接入） */

@@ -84,7 +84,9 @@ npm run build                 # 之后每次改代码重新构建即可
 | `searchhub keys reset-usage serper <id\|标签>` | 清零用量计数并解除隔离 |
 | `searchhub keys test serper <id\|标签>` | 测试单个密钥连通性 |
 | `searchhub keys remove serper <id\|标签>` | 删除供应商密钥 |
-| `searchhub mcp` | 以 stdio 启动 MCP 服务，供 AI 客户端接入 |
+| `searchhub usage [--json]` | 查看调用用量统计（分供应商 / 分密钥） |
+| `searchhub mcp` | 以 stdio 启动 MCP 服务（本地客户端） |
+| `searchhub mcp --http --port 8788` | 以 Streamable HTTP 启动 MCP 服务（可远程连接） |
 | `searchhub apikey create <名称>` | 创建接入用 API Key（明文只显示一次） |
 | `searchhub apikey list` / `revoke <id>` | 列出 / 吊销 API Key |
 
@@ -303,7 +305,15 @@ curl -X POST http://localhost:8787/api/search \
 
 ## MCP 接口
 
-内置 MCP（Model Context Protocol）服务，AI 客户端可直接把统一搜索当作工具调用：
+内置 MCP（Model Context Protocol）服务，AI 客户端可直接把统一搜索当作工具调用。支持两种传输方式：
+
+| 工具 | 说明 |
+|---|---|
+| `searchhub_search` | 执行搜索，参数：`q`、`pageSize`、`page`、`providerId`、`timeRange`、`site`、`country`、`lang` |
+| `searchhub_status` | 查看各供应商熔断状态、密钥可用数与调用统计 |
+| `searchhub_providers` | 列出内置供应商及其能力 |
+
+### 方式一：stdio（本地客户端）
 
 ```json
 {
@@ -313,13 +323,58 @@ curl -X POST http://localhost:8787/api/search \
 }
 ```
 
-| 工具 | 说明 |
-|---|---|
-| `searchhub_search` | 执行搜索，参数：`q`、`pageSize`、`page`、`providerId`、`timeRange`、`site`、`country`、`lang` |
-| `searchhub_status` | 查看各供应商熔断状态、密钥可用数与调用统计 |
-| `searchhub_providers` | 列出内置供应商及其能力 |
-
 stdio 传输下 stdout 属于协议通道，因此日志统一走 stderr 与文件，不会污染协议。
+
+### 方式二：Streamable HTTP（远程连接）
+
+主服务启动后即在同一端口暴露 MCP 端点，无需额外进程：
+
+```
+POST http://<host>:8787/mcp
+x-api-key: sh_xxxxxxxxxx        # 管理后台「API 授权」创建的 Key，或 SEARCHHUB_API_TOKEN
+content-type: application/json
+accept: application/json, text/event-stream
+```
+
+- 采用**无状态模式**（每个请求独立处理，不维护会话），便于放在负载均衡后面水平扩展
+- 鉴权复用统一搜索接口的 API Key，未带或无效一律 401
+- `GET /mcp`、`DELETE /mcp` 返回 405（无状态模式仅支持 POST）
+- 典型客户端配置（Cursor / 云端 IDE 的 `mcp.json`）：
+
+```json
+{
+  "mcpServers": {
+    "searchhub": {
+      "url": "http://your-host:8787/mcp",
+      "headers": { "x-api-key": "sh_xxxxxxxxxx" }
+    }
+  }
+}
+```
+
+也可以只跑 MCP、不暴露管理界面，适合部署在远程机器上：
+
+```bash
+searchhub mcp --http --port 8788           # 默认监听 0.0.0.0:8788/mcp
+searchhub mcp --http --port 8788 --path /api/mcp
+```
+
+## 用量统计
+
+「用量统计」页按**尝试次数**汇总每个供应商与每把密钥的使用情况：
+
+- 概览：总调用、成功、失败、成功率、平均耗时
+- 趋势：最近 24 小时（按小时）与最近 14 天（按天）的柱状图，红色部分表示失败
+- 分供应商：命中次数、成功率、平均耗时、最近成功时间与最近错误
+- 分密钥：每把密钥的调用/成功/失败/成功率/平均耗时/最近使用时间与最近错误，
+  能快速发现「某把 key 一直没被用到」「某把 key 频繁失败」
+
+统计口径为**尝试次数**：一次搜索可能包含换密钥、换供应商的多轮尝试，都会分别计数；
+「无可用密钥」「供应商熔断被跳过」也会记录，便于定位容量问题。
+
+接口：`GET /api/admin/usage`；命令行：`searchhub usage [--json]`。
+
+数据保存在进程内存中（重启清零），多实例部署需换成 Redis 实现。
 
 ## 容灾规则
 

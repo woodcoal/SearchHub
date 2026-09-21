@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { generateApiKey } from './auth.js';
 import { loadConfig } from './config.js';
 import { logDirSize, logFileInfos, logFiles, pruneLogs } from './logging.js';
-import { startMcpStdio } from './mcp.js';
+import { startMcpHttp, startMcpStdio } from './mcp.js';
 import type { KeyPatch } from './store/store.js';
 import { appVersion } from './version.js';
 import { createHub } from './runtime.js';
@@ -84,6 +84,59 @@ function envWithFlags(flags: Record<string, string | boolean>): NodeJS.ProcessEn
   return env;
 }
 
+function usage(argv: string[]): void {
+  const { flags } = parseArgs(argv);
+  const hub = createHub(loadConfig(envWithFlags(flags)));
+  const snapshot = hub.stats.usage();
+
+  if (flags.json) {
+    console.log(JSON.stringify(snapshot, null, 2));
+    return;
+  }
+
+  const { totals } = snapshot;
+  console.log(
+    `${paint(COLOR.dim, '总调用:')} ${totals.calls}  ` +
+      `${paint(COLOR.dim, '成功:')} ${totals.success}  ` +
+      `${paint(COLOR.dim, '失败:')} ${totals.failed}  ` +
+      `${paint(COLOR.dim, '平均耗时:')} ${totals.avgTookMs}ms`,
+  );
+
+  if (snapshot.providers.length > 0) {
+    console.log(paint(COLOR.bold, '\n分供应商'));
+    console.table(
+      snapshot.providers.map((item) => ({
+        供应商: item.id,
+        调用: item.calls,
+        成功: item.success,
+        失败: item.failed,
+        成功率: item.calls ? `${Math.round((item.success / item.calls) * 100)}%` : '-',
+        平均耗时: item.calls ? `${Math.round(item.totalTookMs / item.calls)}ms` : '-',
+        最近错误: item.lastError ?? '-',
+      })),
+    );
+  }
+
+  if (snapshot.keys.length > 0) {
+    console.log(paint(COLOR.bold, '\n分密钥'));
+    console.table(
+      snapshot.keys.map((item) => ({
+        供应商: item.providerId,
+        密钥: item.keyId.slice(0, 8),
+        调用: item.calls,
+        成功: item.success,
+        失败: item.failed,
+        平均耗时: item.calls ? `${Math.round(item.totalTookMs / item.calls)}ms` : '-',
+        最近使用: item.lastUsedAt ? new Date(item.lastUsedAt).toLocaleString() : '从未使用',
+      })),
+    );
+  }
+
+  console.log(
+    paint(COLOR.dim, '\n提示：统计为进程内累计，重启后清零；趋势数据可在管理后台「用量统计」查看。'),
+  );
+}
+
 function logs(argv: string[]): void {
   const { flags } = parseArgs(argv);
   const config = loadConfig(envWithFlags(flags));
@@ -139,8 +192,10 @@ ${paint(COLOR.cyan, '命令')}
   apikey create <名称>         创建接入用的 API Key（明文只显示一次）
   apikey list                 列出 API Key
   apikey revoke <id>          吊销 API Key
+  usage                       查看调用用量统计（分供应商 / 分密钥）
   logs                        查看日志目录与按天日志文件（--prune 立即清理）
-  mcp                         以 stdio 传输启动 MCP 服务，供 AI 客户端接入
+  mcp                         以 stdio 传输启动 MCP 服务，供本地 AI 客户端接入
+  mcp --http [--port 8788]    以 Streamable HTTP 启动 MCP 服务，可远程连接
   help                        显示帮助
 
 ${paint(COLOR.cyan, '选项')}
@@ -470,15 +525,34 @@ async function main(): Promise<void> {
     case 'apikey':
       await apikey(rest);
       return;
+    case 'usage':
+      usage(rest);
+      return;
     case 'logs':
       logs(rest);
       return;
-    case 'mcp':
-      await startMcpStdio(createHub(loadConfig(envWithFlags(parseArgs(rest).flags))), {
-        name: 'searchhub',
-        version: appVersion(),
-      });
+    case 'mcp': {
+      const { flags } = parseArgs(rest);
+      const config = loadConfig(envWithFlags(flags));
+      const hub = createHub(config);
+      const options = { name: 'searchhub', version: appVersion() };
+
+      if (flags.http === true || typeof flags.http === 'string') {
+        const port = typeof flags.http === 'string' ? Number(flags.http) : Number(flags.port ?? 8788);
+        const host = typeof flags.host === 'string' ? flags.host : '0.0.0.0';
+        const path = typeof flags.path === 'string' ? flags.path : '/mcp';
+        await startMcpHttp(hub, options, config, { host, port, path });
+        console.log(paint(COLOR.green, `MCP（Streamable HTTP）已启动: http://${host}:${port}${path}`));
+        console.log(
+          `${paint(COLOR.dim, '鉴权:')} 请求头 x-api-key（用管理后台「API 授权」创建的 Key，或 SEARCHHUB_API_TOKEN）`,
+        );
+        console.log(`${paint(COLOR.dim, '数据文件:')} ${config.dataFile}`);
+        return;
+      }
+
+      await startMcpStdio(hub, options);
       return;
+    }
     default:
       console.error(paint(COLOR.red, `未知命令: ${command}`));
       printHelp();

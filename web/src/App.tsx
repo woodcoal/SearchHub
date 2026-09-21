@@ -13,9 +13,11 @@ import Playground from './components/Playground';
 import ProvidersPanel from './components/ProvidersPanel';
 import SettingsPanel from './components/SettingsPanel';
 import { Toaster } from './components/Toast';
+import UsagePanel from './components/UsagePanel';
 
 type TabId =
   | 'overview'
+  | 'usage'
   | 'keys'
   | 'providers'
   | 'access'
@@ -28,6 +30,7 @@ type Theme = 'dark' | 'light';
 
 const TABS: Array<{ id: TabId; label: string; icon: IconName }> = [
   { id: 'overview', label: '概览', icon: 'gauge' },
+  { id: 'usage', label: '用量统计', icon: 'chart' },
   { id: 'keys', label: '密钥管理', icon: 'key' },
   { id: 'providers', label: '供应商配置', icon: 'box' },
   { id: 'access', label: 'API 授权', icon: 'shield' },
@@ -167,6 +170,8 @@ export default function App() {
         <div className="spinner">加载中…</div>
       ) : tab === 'overview' ? (
         <Overview state={state} />
+      ) : tab === 'usage' ? (
+        <UsagePanel />
       ) : tab === 'keys' ? (
         <KeysPanel state={state} onRefresh={refresh} />
       ) : tab === 'providers' ? (

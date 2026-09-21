@@ -9,6 +9,15 @@ const MCP_CONFIG = `{
   }
 }`;
 
+const MCP_HTTP_CONFIG = `{
+  "mcpServers": {
+    "searchhub": {
+      "url": "http://your-host:8787/mcp",
+      "headers": { "x-api-key": "sh_xxxxxxxxxx" }
+    }
+  }
+}`;
+
 const CLI_EXAMPLE = `# 启动服务（默认 http://localhost:8787）
 searchhub start
 
@@ -244,9 +253,14 @@ export default function Guide() {
           </tbody>
         </table>
         <p className="sub" style={{ marginTop: 14 }}>
-          客户端配置示例（claude_desktop_config.json）
+          本地客户端（stdio）：claude_desktop_config.json
         </p>
         <CodeBlock code={MCP_CONFIG} />
+        <p className="sub" style={{ marginTop: 14 }}>
+          远程连接（Streamable HTTP）：主服务启动后即在同端口暴露 <span className="mono">/mcp</span>，
+          用「API 授权」里的 Key 鉴权；也可以单独跑 <span className="mono">searchhub mcp --http --port 8788</span>
+        </p>
+        <CodeBlock code={MCP_HTTP_CONFIG} />
       </section>
 
       <section className="card">

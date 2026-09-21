@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 export type IconName =
+  | 'chart'
   | 'gauge'
   | 'key'
   | 'box'
@@ -28,6 +29,14 @@ export type IconName =
   | 'link';
 
 const PATHS: Record<IconName, ReactNode> = {
+  chart: (
+    <>
+      <path d="M4 20h16" />
+      <path d="M7 20V11" />
+      <path d="M12 20V5" />
+      <path d="M17 20v-6" />
+    </>
+  ),
   gauge: (
     <>
       <path d="M4 18a9 9 0 1 1 16 0" />

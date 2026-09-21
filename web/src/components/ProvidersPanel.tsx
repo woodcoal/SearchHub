@@ -40,21 +40,25 @@ function ProviderForm({
 
   const numberOrNull = (raw: string): number | null => (raw.trim() ? Number(raw) : null);
 
+  /** 数字输入被清空时浏览器会给出 0/NaN，这里统一兜底成合法值，避免保存被后端校验拒绝 */
+  const positive = (value: number, fallback: number, min = 0) =>
+    Number.isFinite(value) && value >= min ? value : fallback;
+
   async function save() {
     setSaving(true);
     setMessage('');
     try {
       await api.updateProvider(settings.id, {
         enabled: form.enabled,
-        priority: form.priority,
-        timeoutMs: form.timeoutMs,
-        maxKeyAttempts: form.maxKeyAttempts,
-        failureThreshold: form.failureThreshold,
-        cooldownMs: form.cooldownMs,
-        defaultQps: form.defaultQps,
-        defaultDailyQuota: form.defaultDailyQuota,
-        defaultMonthlyQuota: form.defaultMonthlyQuota,
-        defaultTotalQuota: form.defaultTotalQuota,
+        priority: Math.max(0, Math.trunc(positive(form.priority, 99))),
+        timeoutMs: Math.trunc(positive(form.timeoutMs, 10_000, 1000)),
+        maxKeyAttempts: Math.trunc(positive(form.maxKeyAttempts, 3, 1)),
+        failureThreshold: Math.trunc(positive(form.failureThreshold, 5, 1)),
+        cooldownMs: Math.trunc(positive(form.cooldownMs, 60_000, 1000)),
+        defaultQps: positive(form.defaultQps, 1, 0.1),
+        defaultDailyQuota: form.defaultDailyQuota ?? null,
+        defaultMonthlyQuota: form.defaultMonthlyQuota ?? null,
+        defaultTotalQuota: form.defaultTotalQuota ?? null,
       });
       setMessage('已保存');
       await onRefresh();
@@ -91,6 +95,7 @@ function ProviderForm({
             type="number"
             min={0.1}
             step={0.1}
+            placeholder="1"
             value={form.defaultQps}
             onChange={(e) => update('defaultQps', Number(e.target.value))}
           />

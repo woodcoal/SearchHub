@@ -7,6 +7,8 @@ import type { AppConfig } from '../config.js';
 import { generateApiKey, hashApiKey, hashPassword, SessionTokens, verifyPassword } from '../auth.js';
 import { AllProvidersFailedError } from '../core/errors.js';
 import type { SearchHub } from '../core/hub.js';
+import { registerMcpHttpRoutes } from '../mcp.js';
+import { createApiGuard } from './guards.js';
 import { createDailyLogDestination } from '../logging.js';
 import { PROVIDERS } from '../providers/index.js';
 import { appVersion } from '../version.js';
@@ -28,6 +30,8 @@ const SearchBodySchema = SearchQuerySchema.extend({
 
 /** 配额字段：null 表示继承供应商全局设置 / 不限 */
 const quotaField = z.number().int().min(1).nullable().optional();
+/** QPS 字段：允许小数，null 表示继承供应商全局设置 */
+const qpsField = z.number().min(0.1).max(100).nullable().optional();
 
 const ProviderPatchSchema = z.object({
   enabled: z.boolean().optional(),
@@ -47,7 +51,7 @@ const NewKeySchema = z.object({
   label: z.string().max(64).optional(),
   value: z.string().min(1, '密钥不能为空'),
   enabled: z.boolean().optional(),
-  qps: quotaField,
+  qps: qpsField,
   dailyQuota: quotaField,
   monthlyQuota: quotaField,
   totalQuota: quotaField,
@@ -56,7 +60,7 @@ const NewKeySchema = z.object({
 const KeyPatchSchema = z.object({
   label: z.string().max(64).optional(),
   enabled: z.boolean().optional(),
-  qps: z.number().min(0.1).max(100).optional(),
+  qps: qpsField,
   dailyQuota: quotaField,
   monthlyQuota: quotaField,
   totalQuota: quotaField,
@@ -121,7 +125,7 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
   app.post('/api/admin/login', async (request, reply) => {
     const parsed = LoginSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+      return badRequest(reply, parsed.error);
     }
     if (!verifyPassword(parsed.data.password, passwordHash)) {
       return reply.code(401).send({ error: 'unauthorized', message: '密码错误' });
@@ -141,25 +145,7 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
   };
 
   /** 统一搜索接口鉴权：数据库里的 API Key，或环境变量里的主 API Key */
-  const apiGuard = async (request: any, reply: any) => {
-    const header = request.headers['x-api-key'] ?? request.headers.authorization ?? '';
-    const provided = String(header).replace(/^Bearer\s+/i, '').trim();
-
-    if (!provided) {
-      return reply
-        .code(401)
-        .send({ error: 'unauthorized', message: '缺少 x-api-key 请求头' });
-    }
-    if (config.apiToken && provided === config.apiToken) return;
-
-    const record = hub.store.findApiKeyByHash(hashApiKey(provided));
-    if (!record) {
-      return reply
-        .code(401)
-        .send({ error: 'unauthorized', message: 'API Key 无效或已吊销' });
-    }
-    hub.store.touchApiKey(record.id);
-  };
+  const apiGuard = createApiGuard(hub, config);
 
   app.get('/api/health', async () => ({
     ok: true,
@@ -170,7 +156,7 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
   const handleSearch = async (request: any, reply: any) => {
     const parsed = SearchBodySchema.safeParse(request.body ?? request.query);
     if (!parsed.success) {
-      return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+      return badRequest(reply, parsed.error);
     }
     const { providerId, ...query } = parsed.data;
     try {
@@ -183,11 +169,39 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
   app.post('/api/search', { preHandler: apiGuard }, handleSearch);
   app.get('/api/search', { preHandler: apiGuard }, handleSearch);
 
+  // MCP over HTTP（Streamable HTTP，无状态）：远程机器 / 云端 IDE 可直接接入
+  registerMcpHttpRoutes(app, hub, { name: 'searchhub', version: appVersion() }, apiGuard);
+
   await app.register(
     async (admin) => {
       admin.addHook('preHandler', adminGuard);
 
       admin.get('/state', async () => hub.state());
+
+      /** 用量统计：总计 + 24 小时/14 天趋势 + 分供应商/分密钥明细（带上密钥标签） */
+      admin.get('/usage', async () => {
+        const snapshot = hub.stats.usage();
+        const labels = new Map<string, { label: string; hint: string; enabled: boolean }>();
+        for (const provider of hub.state().providers) {
+          for (const key of provider.keys) {
+            labels.set(`${provider.id}:${key.id}`, {
+              label: key.label,
+              hint: key.hint,
+              enabled: key.enabled,
+            });
+          }
+        }
+
+        return {
+          ...snapshot,
+          keys: snapshot.keys.map((item) => ({
+            ...item,
+            label: labels.get(`${item.providerId}:${item.keyId}`)?.label ?? '(已删除)',
+            hint: labels.get(`${item.providerId}:${item.keyId}`)?.hint ?? '',
+            enabled: labels.get(`${item.providerId}:${item.keyId}`)?.enabled ?? false,
+          })),
+        };
+      });
 
       admin.get('/settings', async () => ({
         homeDir: config.homeDir,
@@ -217,7 +231,7 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
       admin.post('/password', async (request: any, reply: any) => {
         const parsed = PasswordSchema.safeParse(request.body);
         if (!parsed.success) {
-          return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+          return badRequest(reply, parsed.error);
         }
         if (!verifyPassword(parsed.data.currentPassword, passwordHash)) {
           return reply.code(401).send({ error: 'unauthorized', message: '当前密码不正确' });
@@ -232,7 +246,7 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
       admin.post('/data-dir', async (request: any, reply: any) => {
         const parsed = DataDirSchema.safeParse(request.body);
         if (!parsed.success) {
-          return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+          return badRequest(reply, parsed.error);
         }
         try {
           return hub.setDataDir(parsed.data.dir);
@@ -250,7 +264,7 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
         const { id } = request.params as { id: string };
         const parsed = ProviderPatchSchema.safeParse(request.body);
         if (!parsed.success) {
-          return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+          return badRequest(reply, parsed.error);
         }
         try {
           return { provider: hub.updateProvider(id, parsed.data) };
@@ -262,7 +276,7 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
       admin.post('/keys', async (request: any, reply: any) => {
         const parsed = NewKeySchema.safeParse(request.body);
         if (!parsed.success) {
-          return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+          return badRequest(reply, parsed.error);
         }
         const { providerId, ...input } = parsed.data;
         try {
@@ -277,7 +291,7 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
         const { providerId, keyId } = request.params as { providerId: string; keyId: string };
         const parsed = KeyPatchSchema.safeParse(request.body);
         if (!parsed.success) {
-          return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+          return badRequest(reply, parsed.error);
         }
         const { value, ...patch } = parsed.data;
         try {
@@ -334,7 +348,7 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
       admin.post('/api-keys', async (request: any, reply: any) => {
         const parsed = NewApiKeySchema.safeParse(request.body);
         if (!parsed.success) {
-          return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+          return badRequest(reply, parsed.error);
         }
         const generated = generateApiKey();
         const record = hub.store.addApiKey({
@@ -398,6 +412,14 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
   });
 
   return app;
+}
+
+/** 统一的参数校验失败响应：把第一条 issue 拼成可读 message，避免前端只看到 bad_request */
+function badRequest(reply: any, error: z.ZodError): unknown {
+  const message = error.issues
+    .map((issue) => `${issue.path.join('.') || 'body'}: ${issue.message}`)
+    .join('; ');
+  return reply.code(400).send({ error: 'bad_request', message, issues: error.issues });
 }
 
 function replySearchError(reply: any, error: unknown): unknown {

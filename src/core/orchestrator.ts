@@ -67,6 +67,8 @@ export class SearchOrchestrator {
           message: '熔断中，已跳过',
           tookMs: 0,
         });
+        // 未真正发请求也算一次失败的尝试，便于在用量统计里看到「该供应商被跳过」
+        this.ctx.stats.record(provider.id, undefined, false, 0, 'circuit_open', '熔断中，已跳过');
         switchedFrom = switchedFrom ?? provider.id;
         continue;
       }
@@ -79,14 +81,16 @@ export class SearchOrchestrator {
           key = pool.acquire();
         } catch (error) {
           const err = error as NoKeyAvailableError;
+          const code = err.code ?? 'no_key_available';
           attempts.push({
             at: Date.now(),
             provider: provider.id,
             ok: false,
-            code: err.code ?? 'no_key_available',
+            code,
             message: err.message,
             tookMs: 0,
           });
+          this.ctx.stats.record(provider.id, undefined, false, 0, code, err.message);
           break;
         }
 

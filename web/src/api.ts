@@ -32,8 +32,8 @@ export interface KeyView {
   hint: string;
   createdAt: string;
   stats: Counter;
-  /** 密钥自身配置，null 表示继承供应商全局设置 */
-  own: {
+  /** 密钥自身配置，null 表示继承供应商全局设置（老版本服务端可能不返回） */
+  own?: {
     qps: number | null;
     dailyQuota: number | null;
     monthlyQuota: number | null;
@@ -136,8 +136,16 @@ async function request<T>(path: string, init: RequestInit = {}, admin = true): P
   const payload = text ? JSON.parse(text) : null;
 
   if (!response.ok) {
-    const message =
-      payload?.message ?? payload?.error ?? `请求失败 (HTTP ${response.status})`;
+    // 优先给出可读信息：message > 逐条校验错误 > error 码
+    let message: unknown = payload?.message ?? payload?.error;
+    if (!payload?.message && Array.isArray(payload?.issues) && payload.issues.length > 0) {
+      message = payload.issues
+        .map((issue: { path?: string[]; message?: string }) =>
+          `${issue.path?.join('.') || 'body'}: ${issue.message ?? '校验失败'}`,
+        )
+        .join('; ');
+    }
+    if (!message) message = `请求失败 (HTTP ${response.status})`;
     throw new Error(typeof message === 'string' ? message : JSON.stringify(message));
   }
   return payload as T;
@@ -187,8 +195,46 @@ export interface MigrationResult {
   restarted: boolean;
 }
 
+export interface UsageBucket {
+  at: string;
+  calls: number;
+  success: number;
+  failed: number;
+  avgTookMs: number;
+}
+
+export interface UsageCounter {
+  calls: number;
+  success: number;
+  failed: number;
+  lastOkAt: number | null;
+  lastError: string | null;
+  lastErrorCode: string | null;
+  lastTookMs: number | null;
+  totalTookMs: number;
+  lastUsedAt: number | null;
+}
+
+export interface UsageSnapshot {
+  totals: { calls: number; success: number; failed: number; avgTookMs: number };
+  hourly: UsageBucket[];
+  daily: UsageBucket[];
+  providers: Array<UsageCounter & { id: string }>;
+  keys: Array<
+    UsageCounter & {
+      providerId: string;
+      keyId: string;
+      label: string;
+      hint: string;
+      enabled: boolean;
+    }
+  >;
+}
+
 export const api = {
   state: () => request<StateSnapshot>('/api/admin/state'),
+
+  usage: () => request<UsageSnapshot>('/api/admin/usage'),
 
   settings: () => request<SystemSettings>('/api/admin/settings'),
 
