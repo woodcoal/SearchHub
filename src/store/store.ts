@@ -59,8 +59,10 @@ export interface StoreData {
   providers: Record<string, ProviderSettings>;
   keys: Record<string, StoredKey[]>;
   apiKeys: StoredApiKey[];
-  /** 是否已应用过「按免费额度预设默认值」的一次性迁移 */
+  /** 是否已应用过「按免费额度预设默认值」的迁移（第 1 版） */
   quotaDefaultsSeeded?: boolean;
+  /** 「按免费额度预设默认值」的迁移版本号，用于后续更新默认值时再次迁移 */
+  quotaSeedVersion?: number;
 }
 
 export type ProviderPatch = Partial<Omit<ProviderSettings, 'id'>>;
@@ -94,22 +96,105 @@ const PROVIDER_BASE = {
 } as const;
 
 /**
- * 把存量配置与默认值逐字段合并，保证升级后新增字段有值。
- * `seedQuotaDefaults` 为 true 时（首次升级），把仍为 null 的供应商级配额
- * 填成内置建议值；之后用户在界面上显式设成「不限」不会被再次覆盖。
+ * 各家的默认 QPS 与配额，按「免费额度」设定，避免默认值把免费额度一把烧完：
+ * - serper：QPS 5；免费一次性 2500 credits 且不按月重置 → 只设总配额
+ * - tavily：QPS 5；免费 1000 credits/月（basic 搜索 1 credit）→ 月配额 1000
+ * - exa：QPS 10；免费 tier 每月 $10 额度（约 1400 次搜索，保守取 1000）→ 月配额 1000
+ * - anysearch：QPS 20；免费 key 日限额 1000 → 只设日配额
+ * 日配额只给明确有日限额的 anysearch 设置，其余留空（不限）；
+ * 这些值都可以在「供应商配置」里按实际套餐改。
+ */
+const DEFAULT_PROVIDERS: Record<string, ProviderSettings> = {
+  serper: {
+    ...PROVIDER_BASE,
+    id: 'serper',
+    priority: 1,
+    timeoutMs: 10_000,
+    defaultQps: 5,
+    defaultTotalQuota: 2500,
+  },
+  tavily: {
+    ...PROVIDER_BASE,
+    id: 'tavily',
+    priority: 2,
+    timeoutMs: 12_000,
+    defaultQps: 5,
+    defaultMonthlyQuota: 1000,
+  },
+  exa: {
+    ...PROVIDER_BASE,
+    id: 'exa',
+    priority: 3,
+    timeoutMs: 15_000,
+    defaultQps: 10,
+    defaultMonthlyQuota: 1000,
+  },
+  anysearch: {
+    ...PROVIDER_BASE,
+    id: 'anysearch',
+    priority: 4,
+    timeoutMs: 12_000,
+    defaultQps: 20,
+    defaultDailyQuota: 1000,
+  },
+};
+
+/** 默认配额的迁移版本：每次调整内置默认值就 +1，并在 seedQuotas 里补一段迁移 */
+const QUOTA_SEED_VERSION = 2;
+
+/** 上一版（v1）的内置默认值，用来判断用户是否手动改过 */
+const PREVIOUS_DEFAULTS: Record<
+  string,
+  Pick<ProviderSettings, 'defaultQps' | 'defaultDailyQuota' | 'defaultMonthlyQuota' | 'defaultTotalQuota'>
+> = {
+  serper: { defaultQps: 1, defaultDailyQuota: null, defaultMonthlyQuota: null, defaultTotalQuota: 2500 },
+  tavily: { defaultQps: 1, defaultDailyQuota: 100, defaultMonthlyQuota: 1000, defaultTotalQuota: null },
+  exa: { defaultQps: 1, defaultDailyQuota: 100, defaultMonthlyQuota: 1000, defaultTotalQuota: null },
+  anysearch: { defaultQps: 1, defaultDailyQuota: null, defaultMonthlyQuota: null, defaultTotalQuota: null },
+};
+
+const QUOTA_FIELDS = [
+  'defaultQps',
+  'defaultDailyQuota',
+  'defaultMonthlyQuota',
+  'defaultTotalQuota',
+] as const;
+
+/**
+ * 按版本把内置默认配额迁移到存量配置上。
+ * 规则：只有当前值仍等于上一版内置默认值时才覆盖，用户手动改过的一律保留。
+ */
+function seedQuotas(current: ProviderSettings, defaults: ProviderSettings, fromVersion: number): void {
+  if (fromVersion < 1) {
+    // 首次引入默认配额：只把「未设置」的字段填上
+    current.defaultDailyQuota = current.defaultDailyQuota ?? defaults.defaultDailyQuota;
+    current.defaultMonthlyQuota = current.defaultMonthlyQuota ?? defaults.defaultMonthlyQuota;
+    current.defaultTotalQuota = current.defaultTotalQuota ?? defaults.defaultTotalQuota;
+  }
+  if (fromVersion < 2) {
+    const previous = PREVIOUS_DEFAULTS[current.id];
+    if (previous) {
+      for (const field of QUOTA_FIELDS) {
+        if (current[field] === previous[field]) {
+          (current[field] as ProviderSettings[typeof field]) = defaults[field];
+        }
+      }
+    }
+  }
+}
+
+/**
+ * 把存量配置与默认值逐字段合并，保证升级后新增字段有值，
+ * 并按 `fromVersion` 应用默认配额迁移。
  */
 function mergeProviders(
   stored: Record<string, Partial<ProviderSettings>> | undefined,
-  seedQuotaDefaults = false,
+  fromVersion: number,
 ): Record<string, ProviderSettings> {
   const merged: Record<string, ProviderSettings> = {};
   for (const [id, defaults] of Object.entries(DEFAULT_PROVIDERS)) {
     const current = { ...defaults, ...(stored?.[id] ?? {}), id };
-    if (seedQuotaDefaults) {
-      current.defaultDailyQuota = current.defaultDailyQuota ?? defaults.defaultDailyQuota;
-      current.defaultMonthlyQuota = current.defaultMonthlyQuota ?? defaults.defaultMonthlyQuota;
-      current.defaultTotalQuota = current.defaultTotalQuota ?? defaults.defaultTotalQuota;
-    }
+    if (fromVersion < QUOTA_SEED_VERSION) seedQuotas(current, defaults, fromVersion);
     merged[id] = current;
   }
   for (const [id, settings] of Object.entries(stored ?? {})) {
@@ -119,41 +204,6 @@ function mergeProviders(
   }
   return merged;
 }
-
-/**
- * 各家的默认 QPS 与配额，按「免费额度」设定，避免默认值把免费额度一把烧完：
- * - serper：免费一次性 2500 credits，不按月重置 → 只设总配额
- * - tavily：免费 1000 credits/月（basic 搜索 1 credit）→ 月配额 1000，另设日配额做突发保护
- * - exa：免费 tier 每月 $10 额度（约 1400 次搜索），保守取 1000 → 月配额 1000
- * - anysearch：免费 key 只有速率限制、未给总量配额 → 不设配额
- * 这些值都可以在「供应商配置」里按实际套餐改。
- */
-const DEFAULT_PROVIDERS: Record<string, ProviderSettings> = {
-  serper: {
-    ...PROVIDER_BASE,
-    id: 'serper',
-    priority: 1,
-    timeoutMs: 10_000,
-    defaultTotalQuota: 2500,
-  },
-  tavily: {
-    ...PROVIDER_BASE,
-    id: 'tavily',
-    priority: 2,
-    timeoutMs: 12_000,
-    defaultDailyQuota: 100,
-    defaultMonthlyQuota: 1000,
-  },
-  exa: {
-    ...PROVIDER_BASE,
-    id: 'exa',
-    priority: 3,
-    timeoutMs: 15_000,
-    defaultDailyQuota: 100,
-    defaultMonthlyQuota: 1000,
-  },
-  anysearch: { ...PROVIDER_BASE, id: 'anysearch', priority: 4, timeoutMs: 12_000 },
-};
 
 /**
  * 供应商设置 + 密钥密文的持久化。单文件 JSON + 原子写入，
@@ -182,15 +232,18 @@ export class Store {
     if (existsSync(target)) {
       try {
         const parsed = JSON.parse(readFileSync(target, 'utf8')) as StoreData;
-        const seeded = !parsed.quotaDefaultsSeeded;
+        // 老数据文件没有版本号：有 quotaDefaultsSeeded 视为已做过第 1 版迁移
+        const fromVersion = parsed.quotaSeedVersion ?? (parsed.quotaDefaultsSeeded ? 1 : 0);
+        const seeded = fromVersion < QUOTA_SEED_VERSION;
         return {
           data: {
             version: VERSION,
             // 逐供应商深合并：老数据文件缺的新字段（如 defaultQps）用默认值补齐
-            providers: mergeProviders(parsed.providers, seeded),
+            providers: mergeProviders(parsed.providers, fromVersion),
             keys: parsed.keys ?? {},
             apiKeys: parsed.apiKeys ?? [],
             quotaDefaultsSeeded: true,
+            quotaSeedVersion: QUOTA_SEED_VERSION,
           },
           seeded,
         };
@@ -205,6 +258,7 @@ export class Store {
       keys: {},
       apiKeys: [],
       quotaDefaultsSeeded: true,
+      quotaSeedVersion: QUOTA_SEED_VERSION,
     };
     for (const [providerId, values] of Object.entries(seed)) {
       for (const value of values) {
