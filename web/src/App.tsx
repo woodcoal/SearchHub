@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getAdminToken, setAdminToken, type StateSnapshot } from './api';
+import ApiDocs from './components/ApiDocs';
 import ApiKeysPanel from './components/ApiKeysPanel';
+import Guide from './components/Guide';
 import KeysPanel from './components/KeysPanel';
 import Login from './components/Login';
 import Overview from './components/Overview';
 import Playground from './components/Playground';
 import ProvidersPanel from './components/ProvidersPanel';
 
-type TabId = 'overview' | 'keys' | 'providers' | 'access' | 'playground';
+type TabId = 'overview' | 'keys' | 'providers' | 'access' | 'playground' | 'api-docs' | 'guide';
 type Theme = 'dark' | 'light';
 
 const TABS: Array<{ id: TabId; label: string }> = [
@@ -16,6 +18,8 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'providers', label: '供应商配置' },
   { id: 'access', label: 'API 授权' },
   { id: 'playground', label: '搜索调试' },
+  { id: 'api-docs', label: 'API 接口' },
+  { id: 'guide', label: '使用说明' },
 ];
 
 function initialTheme(): Theme {
@@ -126,8 +130,12 @@ export default function App() {
         <ProvidersPanel state={state} onRefresh={refresh} />
       ) : tab === 'access' ? (
         <ApiKeysPanel />
-      ) : (
+      ) : tab === 'playground' ? (
         <Playground state={state} />
+      ) : tab === 'api-docs' ? (
+        <ApiDocs />
+      ) : (
+        <Guide />
       )}
     </div>
   );

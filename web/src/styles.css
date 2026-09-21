@@ -458,6 +458,40 @@ tr:last-child td {
   word-break: break-all;
 }
 
+.code-wrap {
+  position: relative;
+}
+
+.code-copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0.75;
+}
+
+.code-copy:hover {
+  opacity: 1;
+}
+
+.doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.doc-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.doc-step p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 /* ---------- login ---------- */
 .login-wrap {
   min-height: 100vh;
@@ -502,7 +536,8 @@ tr:last-child td {
   background: #f8fafc;
 }
 
-:root[data-theme='light'] .result p {
+:root[data-theme='light'] .result p,
+:root[data-theme='light'] .doc-step p {
   color: #475569;
 }
 

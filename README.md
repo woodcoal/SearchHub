@@ -28,12 +28,40 @@ npm run build                 # 编译后端到 dist/、前端到 web/dist/
 npm start                     # 单进程同时提供 API 与管理界面
 ```
 
-## 全局安装（CLI）
+## 包安装（已发布到 npm）
+
+npm 页面：https://www.npmjs.com/package/searchhub
 
 ```bash
-npm run build
-npm install -g .              # 安装到系统，得到 searchhub 命令
-searchhub start               # 任意目录执行即可启动
+npm install -g searchhub      # 全局安装，得到 searchhub 命令
+searchhub start               # 任意目录执行，服务默认 http://localhost:8787
+```
+
+要求 **Node.js >= 20**。安装后打开 http://localhost:8787 进入管理后台（首次需用管理密码登录）。
+
+其他安装方式：
+
+```bash
+npx searchhub --help          # 不安装，直接试用
+npm install -g searchhub@latest   # 升级到最新版本
+npm uninstall -g searchhub        # 卸载
+```
+
+作为项目依赖安装（便于在 CI 或容器里固定版本）：
+
+```bash
+npm install searchhub         # 之后用 npx searchhub 启动
+```
+
+> 包内只包含构建产物（`dist/`、`web/dist/`）与文档，
+> `react` / `react-dom` 属于 devDependencies，运行时不会安装。
+
+从源码安装（参与开发时用这个）：
+
+```bash
+npm install                   # 安装依赖
+npm run build                 # 编译后端到 dist/、前端到 web/dist/
+npm install -g .              # 从本地目录安装
 ```
 
 开发调试用 `npm link` 更好：会在全局与源码目录之间建立链接，改完代码 `npm run build` 后立刻生效，无需反复安装。
@@ -42,8 +70,6 @@ searchhub start               # 任意目录执行即可启动
 npm link                      # 只需执行一次
 npm run build                 # 之后每次改代码重新构建即可
 ```
-
-卸载：`npm uninstall -g searchhub`
 
 ### CLI 命令
 
@@ -67,11 +93,11 @@ searchhub start --port 9000 --data ./data/store.json
 searchhub search "openai" --size 5 --provider serper
 ```
 
-### 发布到 npm 仓库
+### 版本发布（维护者）
 
 ```bash
-# 1. package.json 中移除 "private": true
-npm version patch
+# 注意：发布前需移除 package.json 中的 "private": true
+npm version patch             # 或 minor / major
 npm publish                   # 会自动执行 prepublishOnly（即 npm run build）
 ```
 
