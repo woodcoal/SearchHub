@@ -1,5 +1,7 @@
 # SearchHub · 统一搜索网关
 
+> 作者：木炭 &lt;woodcoal@qq.com&gt;　·　仓库：https://github.com/woodcoal/SearchHub　·　许可：MIT
+
 把多家异构搜索 API（当前内置 **Serper** + **Exa**）收敛成一套统一协议，并集中管理密钥：
 **密钥自动轮换、失效自动换 key、供应商整体故障自动切换、连续失败自动熔断**。
 对外提供统一的认证搜索接口，对内提供带密码登录的管理后台。
@@ -187,6 +189,23 @@ curl -X POST http://localhost:8787/api/search \
 3. 在 `src/providers/index.ts` 的 `PROVIDERS` 数组里注册
 
 新增后系统会自动为该供应商生成默认配置，界面上添加密钥即可使用，无需改动其他代码。
+
+## 版权与许可
+
+```
+Copyright (c) 2026 木炭 <woodcoal@qq.com>
+```
+
+本项目采用 [MIT 许可](./LICENSE)。你可以自由使用、修改与二次分发，
+但需保留版权声明与许可声明。
+
+- 作者：木炭
+- 邮箱：woodcoal@qq.com
+- 仓库：https://github.com/woodcoal/SearchHub
+- 问题反馈：https://github.com/woodcoal/SearchHub/issues
+
+> 注意：本项目会接入第三方搜索服务（Serper / Exa 等），
+> 使用这些服务需遵守各自的服务条款与计费规则，与本项目许可无关。
 
 ## 已知限制
 

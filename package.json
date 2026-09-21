@@ -4,6 +4,30 @@
   "private": true,
   "type": "module",
   "description": "统一搜索网关：聚合 Serper / Exa 等多家搜索 API，统一协议、集中管理密钥、自动轮换与容灾切换",
+  "author": {
+    "name": "木炭",
+    "email": "woodcoal@qq.com",
+    "url": "https://github.com/woodcoal"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/woodcoal/SearchHub#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/woodcoal/SearchHub.git"
+  },
+  "bugs": {
+    "url": "https://github.com/woodcoal/SearchHub/issues"
+  },
+  "keywords": [
+    "search",
+    "search-api",
+    "serper",
+    "exa",
+    "gateway",
+    "api-key",
+    "key-rotation",
+    "cli"
+  ],
   "main": "dist/index.js",
   "bin": {
     "searchhub": "dist/cli.js"
