@@ -148,7 +148,9 @@ function ProviderCard({ provider }: { provider: ProviderView }) {
                   {quotaText(key.usedTotal, key.totalQuota)}
                 </td>
                 <td data-label="最近错误" className="muted">
-                  {key.lastError ?? '—'}
+                  <span className="ellipsis" title={key.lastError ?? '无错误'}>
+                    {key.lastError ?? '—'}
+                  </span>
                 </td>
               </tr>
             ))}
@@ -157,7 +159,11 @@ function ProviderCard({ provider }: { provider: ProviderView }) {
       )}
 
       {stats.lastError && (
-        <div className="error-box" style={{ marginTop: 12, marginBottom: 0 }}>
+        <div
+          className="error-box single-line"
+          style={{ marginTop: 12, marginBottom: 0 }}
+          title={stats.lastError}
+        >
           最近失败：{stats.lastError}
         </div>
       )}

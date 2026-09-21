@@ -185,6 +185,28 @@ export default function ApiDocs() {
               <td>供应商、密钥、统计、最近日志的全量状态</td>
             </tr>
             <tr>
+              <td>GET</td>
+              <td className="mono">/api/admin/usage</td>
+              <td>登录</td>
+              <td>用量统计：总计、24 小时/14 天趋势、分供应商与分密钥明细</td>
+            </tr>
+            <tr>
+              <td>GET</td>
+              <td className="mono">/api/admin/logs</td>
+              <td>登录</td>
+              <td>
+                运行日志：<span className="mono">date</span> /{' '}
+                <span className="mono">level</span> / <span className="mono">onlySearch</span> /{' '}
+                <span className="mono">keyword</span> / <span className="mono">limit</span> 过滤
+              </td>
+            </tr>
+            <tr>
+              <td>POST</td>
+              <td className="mono">/mcp</td>
+              <td>API Key</td>
+              <td>MCP over HTTP（Streamable HTTP，无状态），供 AI 客户端远程接入</td>
+            </tr>
+            <tr>
               <td>POST</td>
               <td className="mono">/api/admin/search</td>
               <td>登录</td>

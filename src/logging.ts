@@ -1,8 +1,11 @@
 import {
   appendFileSync,
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readdirSync,
+  readSync,
   statSync,
   unlinkSync,
 } from 'node:fs';
@@ -73,6 +76,36 @@ export function logFiles(dir: string): string[] {
 export interface LogFileInfo {
   name: string;
   size: number;
+}
+
+/**
+ * 读取日志文件末尾若干字节并按行返回。
+ * 日志文件可能很大，只取尾部（默认 512KB），首行可能被截断则丢弃。
+ */
+export function readTailLines(file: string, maxBytes = 512 * 1024): string[] {
+  if (!existsSync(file)) return [];
+
+  let size = 0;
+  try {
+    size = statSync(file).size;
+  } catch {
+    return [];
+  }
+  if (size === 0) return [];
+
+  const start = Math.max(0, size - maxBytes);
+  const length = size - start;
+  const buffer = Buffer.alloc(length);
+  const fd = openSync(file, 'r');
+  try {
+    readSync(fd, buffer, 0, length, start);
+  } finally {
+    closeSync(fd);
+  }
+
+  const lines = buffer.toString('utf8').split('\n');
+  if (start > 0) lines.shift(); // 起始处大概率是被截断的半行
+  return lines.map((line) => line.trim()).filter(Boolean);
 }
 
 export function logFileInfos(dir: string): LogFileInfo[] {

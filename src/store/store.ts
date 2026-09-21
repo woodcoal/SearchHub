@@ -59,6 +59,8 @@ export interface StoreData {
   providers: Record<string, ProviderSettings>;
   keys: Record<string, StoredKey[]>;
   apiKeys: StoredApiKey[];
+  /** 是否已应用过「按免费额度预设默认值」的一次性迁移 */
+  quotaDefaultsSeeded?: boolean;
 }
 
 export type ProviderPatch = Partial<Omit<ProviderSettings, 'id'>>;
@@ -91,13 +93,24 @@ const PROVIDER_BASE = {
   defaultTotalQuota: null,
 } as const;
 
-/** 把存量配置与默认值逐字段合并，保证升级后新增字段有值 */
+/**
+ * 把存量配置与默认值逐字段合并，保证升级后新增字段有值。
+ * `seedQuotaDefaults` 为 true 时（首次升级），把仍为 null 的供应商级配额
+ * 填成内置建议值；之后用户在界面上显式设成「不限」不会被再次覆盖。
+ */
 function mergeProviders(
   stored: Record<string, Partial<ProviderSettings>> | undefined,
+  seedQuotaDefaults = false,
 ): Record<string, ProviderSettings> {
   const merged: Record<string, ProviderSettings> = {};
   for (const [id, defaults] of Object.entries(DEFAULT_PROVIDERS)) {
-    merged[id] = { ...defaults, ...(stored?.[id] ?? {}), id };
+    const current = { ...defaults, ...(stored?.[id] ?? {}), id };
+    if (seedQuotaDefaults) {
+      current.defaultDailyQuota = current.defaultDailyQuota ?? defaults.defaultDailyQuota;
+      current.defaultMonthlyQuota = current.defaultMonthlyQuota ?? defaults.defaultMonthlyQuota;
+      current.defaultTotalQuota = current.defaultTotalQuota ?? defaults.defaultTotalQuota;
+    }
+    merged[id] = current;
   }
   for (const [id, settings] of Object.entries(stored ?? {})) {
     if (!merged[id]) {
@@ -107,10 +120,38 @@ function mergeProviders(
   return merged;
 }
 
+/**
+ * 各家的默认 QPS 与配额，按「免费额度」设定，避免默认值把免费额度一把烧完：
+ * - serper：免费一次性 2500 credits，不按月重置 → 只设总配额
+ * - tavily：免费 1000 credits/月（basic 搜索 1 credit）→ 月配额 1000，另设日配额做突发保护
+ * - exa：免费 tier 每月 $10 额度（约 1400 次搜索），保守取 1000 → 月配额 1000
+ * - anysearch：免费 key 只有速率限制、未给总量配额 → 不设配额
+ * 这些值都可以在「供应商配置」里按实际套餐改。
+ */
 const DEFAULT_PROVIDERS: Record<string, ProviderSettings> = {
-  serper: { ...PROVIDER_BASE, id: 'serper', priority: 1, timeoutMs: 10_000 },
-  tavily: { ...PROVIDER_BASE, id: 'tavily', priority: 2, timeoutMs: 12_000 },
-  exa: { ...PROVIDER_BASE, id: 'exa', priority: 3, timeoutMs: 15_000 },
+  serper: {
+    ...PROVIDER_BASE,
+    id: 'serper',
+    priority: 1,
+    timeoutMs: 10_000,
+    defaultTotalQuota: 2500,
+  },
+  tavily: {
+    ...PROVIDER_BASE,
+    id: 'tavily',
+    priority: 2,
+    timeoutMs: 12_000,
+    defaultDailyQuota: 100,
+    defaultMonthlyQuota: 1000,
+  },
+  exa: {
+    ...PROVIDER_BASE,
+    id: 'exa',
+    priority: 3,
+    timeoutMs: 15_000,
+    defaultDailyQuota: 100,
+    defaultMonthlyQuota: 1000,
+  },
   anysearch: { ...PROVIDER_BASE, id: 'anysearch', priority: 4, timeoutMs: 12_000 },
 };
 
@@ -126,24 +167,32 @@ export class Store {
     private readonly secretBox: SecretBox,
     seed: Record<string, string[]> = {},
   ) {
-    this.data = this.load(seed);
+    const { data, seeded } = this.load(seed);
+    this.data = data;
+    // 首次应用「按免费额度预设的默认配额」时落盘一次，之后不再覆盖用户选择
+    if (seeded) this.save();
   }
 
   get path(): string {
     return this.file;
   }
 
-  private load(seed: Record<string, string[]>): StoreData {
+  private load(seed: Record<string, string[]>): { data: StoreData; seeded: boolean } {
     const target = resolve(this.file);
     if (existsSync(target)) {
       try {
         const parsed = JSON.parse(readFileSync(target, 'utf8')) as StoreData;
+        const seeded = !parsed.quotaDefaultsSeeded;
         return {
-          version: VERSION,
-          // 逐供应商深合并：老数据文件缺的新字段（如 defaultQps）用默认值补齐
-          providers: mergeProviders(parsed.providers),
-          keys: parsed.keys ?? {},
-          apiKeys: parsed.apiKeys ?? [],
+          data: {
+            version: VERSION,
+            // 逐供应商深合并：老数据文件缺的新字段（如 defaultQps）用默认值补齐
+            providers: mergeProviders(parsed.providers, seeded),
+            keys: parsed.keys ?? {},
+            apiKeys: parsed.apiKeys ?? [],
+            quotaDefaultsSeeded: true,
+          },
+          seeded,
         };
       } catch (error) {
         throw new Error(`数据文件解析失败 (${target}): ${(error as Error).message}`);
@@ -155,6 +204,7 @@ export class Store {
       providers: structuredClone(DEFAULT_PROVIDERS),
       keys: {},
       apiKeys: [],
+      quotaDefaultsSeeded: true,
     };
     for (const [providerId, values] of Object.entries(seed)) {
       for (const value of values) {
@@ -174,9 +224,10 @@ export class Store {
         data.keys[providerId] = list;
       }
     }
+    // 首次创建数据文件：这里直接落盘，构造函数不再重复保存
     this.data = data;
     this.persist();
-    return data;
+    return { data, seeded: false };
   }
 
   private persist(): void {

@@ -231,10 +231,53 @@ export interface UsageSnapshot {
   >;
 }
 
+export interface LogEntry {
+  level?: number;
+  time?: number;
+  at?: number;
+  msg?: string;
+  event?: string;
+  ok?: boolean;
+  q?: string;
+  source?: string;
+  requestedProvider?: string | null;
+  provider?: string;
+  keyId?: string;
+  results?: number;
+  attempts?: number | Array<{ provider: string; code?: string; message?: string }>;
+  degraded?: boolean;
+  switchedFrom?: string | null;
+  tookMs?: number;
+  [key: string]: unknown;
+}
+
+export interface LogsResponse {
+  date: string;
+  dir: string;
+  file: string;
+  exists: boolean;
+  retentionDays: number;
+  files: Array<{ name: string; size: number }>;
+  total: number;
+  skipped: number;
+  entries: LogEntry[];
+}
+
 export const api = {
   state: () => request<StateSnapshot>('/api/admin/state'),
 
   usage: () => request<UsageSnapshot>('/api/admin/usage'),
+
+  logs: (options: { date?: string; level?: string; onlySearch?: boolean; keyword?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (options.date) params.set('date', options.date);
+    if (options.level) params.set('level', options.level);
+    if (options.onlySearch) params.set('onlySearch', 'true');
+    if (options.keyword) params.set('keyword', options.keyword);
+    if (options.limit) params.set('limit', String(options.limit));
+    const suffix = params.toString();
+    return request<LogsResponse>(`/api/admin/logs${suffix ? `?${suffix}` : ''}`);
+  },
 
   settings: () => request<SystemSettings>('/api/admin/settings'),
 

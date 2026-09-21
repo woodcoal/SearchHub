@@ -292,6 +292,22 @@ curl -X POST http://localhost:8787/api/search \
 界面上可以直观看到 `已用/上限` 三个数字，也可用「重置用量」清零（例如充值后）。
 另有独立的 QPS 令牌桶控制瞬时速率。
 
+### 内置默认配额（按各家免费额度预设）
+
+首次启动时，各供应商会带一组「免费额度」导向的默认值，避免默认配置把免费额度一把烧完：
+
+| 供应商 | 全局 QPS | 日配额 | 月配额 | 总配额 | 依据 |
+|---|---|---|---|---|---|
+| `serper` | 1 | 不限 | 不限 | **2500** | 免费一次性 2500 credits，不按月重置 |
+| `tavily` | 1 | 100 | **1000** | 不限 | 免费 1000 credits/月（basic 搜索 1 credit） |
+| `exa` | 1 | 100 | **1000** | 不限 | 免费 tier 每月 $10 额度（约 1400 次），保守取 1000 |
+| `anysearch` | 1 | 不限 | 不限 | 不限 | 免费 key 只有速率限制，未给总量配额 |
+
+- 这些是**供应商级默认值**，密钥里留空的字段继承它们；也可以在「供应商配置」里按实际套餐改
+- 日配额是突发保护，不会限制正常使用（100/天 × 30 天 > 月配额）
+- 升级已有数据文件时会做一次性迁移：仍为「不限」的供应商级配额会填入上表建议值，
+  之后你在界面上显式设置过的值不会被覆盖
+
 ### 供应商级全局默认
 
 「供应商配置」里还能设置该供应商的 **全局 QPS 与三类配额**：
@@ -358,6 +374,54 @@ accept: application/json, text/event-stream
 searchhub mcp --http --port 8788           # 默认监听 0.0.0.0:8788/mcp
 searchhub mcp --http --port 8788 --path /api/mcp
 ```
+
+## 日志
+
+每次搜索都会写一条结构化日志（`event: search`），含检索词、命中供应商、使用的密钥、
+结果条数、耗时、尝试次数与是否降级，成功与失败都记录。
+
+管理后台「日志」页可直接查看：
+
+- 按天选择日志文件（默认今天），可列出所有历史文件并一键切换
+- 按级别过滤（INFO / WARN / ERROR 及以上）、按关键词过滤（检索词、供应商、消息）
+- 「仅搜索事件」开关：只看搜索，或查看包括启动、报错在内的全部运行日志
+- 自动刷新（5 秒）便于边压测边观察；每行的 ⋮ 可以看到该条的完整原始 JSON
+
+接口：`GET /api/admin/logs?date=2026-09-21&level=warn&onlySearch=true&keyword=openai&limit=200`
+
+命令行：
+
+```bash
+searchhub logs              # 日志目录、保留策略与文件占用
+searchhub logs --prune      # 立即清理过期日志
+```
+
+## 搜索 Skill（给 AI 智能体用）
+
+`skill/searchhub/` 是一个可独立分发的技能包，让智能体直接具备联网检索能力：
+
+```
+skill/searchhub/
+├── SKILL.md                      # 技能定义（智能体读取）
+├── README.md                     # 安装与配置说明
+├── .env.example
+├── references/api.md             # 接口、错误码、MCP、供应商能力差异
+└── scripts/searchhub_search.mjs  # 零依赖 Node 脚本，可直接执行
+```
+
+```bash
+# 安装到项目级 / 用户级技能目录
+cp -r skill/searchhub .codebuddy/skills/searchhub
+cp -r skill/searchhub ~/.codebuddy/skills/searchhub
+
+# 直接使用脚本
+SEARCHHUB_BASE_URL=http://127.0.0.1:8787 SEARCHHUB_API_KEY=sh_xxx \
+  node skill/searchhub/scripts/searchhub_search.mjs "统一搜索网关" --size 5
+node skill/searchhub/scripts/searchhub_search.mjs --status
+```
+
+技能内部按「MCP 工具 > HTTP 接口 > CLI」的优先级选择调用方式，
+并写明了引用规范（用 `results[].url` 作为来源）与 502 时的处置建议。
 
 ## 用量统计
 

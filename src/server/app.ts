@@ -9,7 +9,7 @@ import { AllProvidersFailedError } from '../core/errors.js';
 import type { SearchHub } from '../core/hub.js';
 import { registerMcpHttpRoutes } from '../mcp.js';
 import { createApiGuard } from './guards.js';
-import { createDailyLogDestination } from '../logging.js';
+import { createDailyLogDestination, logFileInfos, readTailLines } from '../logging.js';
 import { PROVIDERS } from '../providers/index.js';
 import { appVersion } from '../version.js';
 
@@ -159,9 +159,49 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
       return badRequest(reply, parsed.error);
     }
     const { providerId, ...query } = parsed.data;
+    const startedAt = Date.now();
+
     try {
-      return await hub.search(query, { providerId });
+      const response = await hub.search(query, { providerId });
+      // 结构化记录每次搜索，管理后台的「日志」页据此展示最近搜索情况
+      request.log.info(
+        {
+          event: 'search',
+          ok: true,
+          q: query.q,
+          source: request.url?.startsWith('/api/admin') ? 'admin' : 'api',
+          requestedProvider: providerId ?? null,
+          provider: response.meta.provider,
+          keyId: response.meta.keyId,
+          pageSize: query.pageSize ?? null,
+          results: response.results.length,
+          attempts: response.meta.attempts.length,
+          degraded: response.meta.degraded,
+          switchedFrom: response.meta.switchedFrom ?? null,
+          tookMs: response.meta.tookMs,
+        },
+        '搜索完成',
+      );
+      return response;
     } catch (error) {
+      if (error instanceof AllProvidersFailedError) {
+        request.log.warn(
+          {
+            event: 'search',
+            ok: false,
+            q: query.q,
+            source: request.url?.startsWith('/api/admin') ? 'admin' : 'api',
+            requestedProvider: providerId ?? null,
+            tookMs: Date.now() - startedAt,
+            attempts: error.attempts.map((item) => ({
+              provider: item.provider,
+              code: item.code,
+              message: item.message,
+            })),
+          },
+          '搜索失败',
+        );
+      }
       return replySearchError(reply, error);
     }
   };
@@ -177,6 +217,60 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
       admin.addHook('preHandler', adminGuard);
 
       admin.get('/state', async () => hub.state());
+
+      /** 最近搜索 / 运行日志：按天读取日志文件尾部，支持级别、关键词与「仅搜索」过滤 */
+      admin.get('/logs', async (request: any) => {
+        const query = (request.query ?? {}) as Record<string, string | undefined>;
+        const today = new Date().toISOString().slice(0, 10);
+        const date = query.date && /^\d{4}-\d{2}-\d{2}$/.test(query.date) ? query.date : today;
+        const limit = Math.min(Math.max(Number(query.limit ?? 200) || 200, 1), 1000);
+        const levelFloor =
+          { trace: 10, debug: 20, info: 30, warn: 40, error: 50, fatal: 60 }[
+            String(query.level ?? '').toLowerCase()
+          ] ?? 0;
+        const keyword = query.keyword?.trim().toLowerCase() ?? '';
+
+        const file = join(config.logDir, `searchhub-${date}.log`);
+        const lines = readTailLines(file);
+        let entries: any[] = [];
+        let skipped = 0;
+
+        for (const line of lines) {
+          try {
+            entries.push(JSON.parse(line));
+          } catch {
+            skipped += 1;
+          }
+        }
+
+        if (levelFloor > 0) entries = entries.filter((item) => Number(item.level ?? 30) >= levelFloor);
+        if (query.onlySearch === 'true' || query.onlySearch === '1') {
+          entries = entries.filter((item) => item.event === 'search');
+        }
+        if (keyword) {
+          entries = entries.filter((item) => {
+            const haystack = [item.q, item.msg, item.message, item.provider, item.keyId]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase();
+            return haystack.includes(keyword);
+          });
+        }
+
+        entries = entries.slice(-limit).reverse();
+
+        return {
+          date,
+          dir: config.logDir,
+          file,
+          exists: existsSync(file),
+          retentionDays: config.logRetentionDays,
+          files: logFileInfos(config.logDir),
+          total: lines.length,
+          skipped,
+          entries,
+        };
+      });
 
       /** 用量统计：总计 + 24 小时/14 天趋势 + 分供应商/分密钥明细（带上密钥标签） */
       admin.get('/usage', async () => {

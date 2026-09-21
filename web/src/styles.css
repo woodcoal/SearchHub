@@ -655,6 +655,62 @@ tr:last-child td {
   }
 }
 
+/* ==================== 单行省略（错误信息等） ==================== */
+.ellipsis {
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.error-box.single-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-filters {
+  margin-top: 12px;
+  gap: 10px;
+}
+
+.log-query {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.log-meta {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.log-detail .code-block {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  font-size: 11.5px;
+  white-space: pre;
+}
+
+.menu-panel.log-detail {
+  min-width: min(560px, calc(100vw - 60px));
+}
+
+.footer-repo {
+  color: var(--muted);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.footer-repo:hover {
+  color: var(--accent);
+}
+
 /* ==================== 用量图表 ==================== */
 .chart {
   display: flex;

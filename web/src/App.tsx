@@ -11,6 +11,7 @@ import Logo from './components/Logo';
 import Overview from './components/Overview';
 import Playground from './components/Playground';
 import ProvidersPanel from './components/ProvidersPanel';
+import LogsPanel from './components/LogsPanel';
 import SettingsPanel from './components/SettingsPanel';
 import { Toaster } from './components/Toast';
 import UsagePanel from './components/UsagePanel';
@@ -22,6 +23,7 @@ type TabId =
   | 'providers'
   | 'access'
   | 'playground'
+  | 'logs'
   | 'settings'
   | 'api-docs'
   | 'guide'
@@ -35,6 +37,7 @@ const TABS: Array<{ id: TabId; label: string; icon: IconName }> = [
   { id: 'providers', label: '供应商配置', icon: 'box' },
   { id: 'access', label: 'API 授权', icon: 'shield' },
   { id: 'playground', label: '搜索调试', icon: 'search' },
+  { id: 'logs', label: '日志', icon: 'list' },
   { id: 'settings', label: '系统设置', icon: 'sliders' },
   { id: 'api-docs', label: 'API 接口', icon: 'code' },
   { id: 'guide', label: '使用说明', icon: 'book' },
@@ -180,6 +183,8 @@ export default function App() {
         <ApiKeysPanel />
       ) : tab === 'playground' ? (
         <Playground state={state} />
+      ) : tab === 'logs' ? (
+        <LogsPanel />
       ) : tab === 'settings' ? (
         <SettingsPanel />
       ) : tab === 'api-docs' ? (
@@ -191,15 +196,19 @@ export default function App() {
       <footer className="footer">
         <div className="footer-main">
           <Logo size={18} />
-          <span>
-            SearchHub v{__APP_VERSION__} · © 2026 木炭 · MIT License
-          </span>
+          <span>SearchHub v{__APP_VERSION__} · © 2026 木炭 · MIT License</span>
+          <a
+            className="footer-repo"
+            href="https://github.com/woodcoal/SearchHub"
+            target="_blank"
+            rel="noreferrer"
+            title="https://github.com/woodcoal/SearchHub"
+          >
+            <Icon name="link" size={14} />
+            github.com/woodcoal/SearchHub
+          </a>
         </div>
         <div className="footer-links">
-          <a href="https://github.com/woodcoal/SearchHub" target="_blank" rel="noreferrer">
-            <Icon name="link" size={14} /> 项目仓库
-          </a>
-          <a href="mailto:woodcoal@qq.com">woodcoal@qq.com</a>
           <button className="link-btn" onClick={() => setTab('about')}>
             <Icon name="info" size={14} /> 关于
           </button>
