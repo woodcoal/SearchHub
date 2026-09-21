@@ -3,7 +3,13 @@ npm-debug.log*
 dist
 web/dist
 .git
+.github
 .gitignore
+# 文档与截图只用于仓库和 npm，不需要进构建上下文
+# （否则每次改图都会让 Docker 构建缓存失效）
+docs
+# 本地助手配置，且与 skill/searchhub/ 内容重复
+.codebuddy
 .env
 .env.*
 !/.env.example

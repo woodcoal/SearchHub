@@ -1,6 +1,11 @@
 # syntax=docker/dockerfile:1
+#
+# Node 24 = Active LTS, supported until 2028-04-30.
+# Both stages must stay on a supported major: this service holds provider API
+# keys, admin sessions and caller credentials, so an EOL runtime (no security
+# patches) is not acceptable here.
 
-FROM node:20-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -9,7 +14,7 @@ RUN npm ci
 COPY . .
 RUN npm run build && npm prune --omit=dev
 
-FROM node:20-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 
 ENV NODE_ENV=production \
     PORT=8787 \

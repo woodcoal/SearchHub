@@ -2,6 +2,11 @@
 
 [中文 README](./README.md) · [npm](https://www.npmjs.com/package/searchhub) · [Issues](https://github.com/woodcoal/SearchHub/issues)
 
+[![npm version](https://img.shields.io/npm/v/searchhub)](https://www.npmjs.com/package/searchhub)
+[![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+[![node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
+[![CI](https://github.com/woodcoal/SearchHub/actions/workflows/ci.yml/badge.svg)](https://github.com/woodcoal/SearchHub/actions/workflows/ci.yml)
+
 > Self-hosted resilient search gateway for AI agents.
 >
 > **One protocol. Multiple search providers. Automatic key rotation and failover.**
@@ -21,21 +26,48 @@ A single search provider is a single point of failure. SearchHub handles the ope
 - Expose one normalized HTTP API, CLI, MCP server, and admin UI
 - Self-host the gateway so provider keys and call logs stay on your infrastructure
 
+## Screenshots
+
+> The admin UI is currently **Chinese only** — an English UI is not implemented yet. The screenshots below are therefore in Chinese.
+
+**Overview** — one card per provider: breaker state, number of usable keys, cooling / quarantined counts, capability tags, and the provider-level default quotas.
+
+![Overview page](docs/images/overview.png)
+
+**Search playground** — a real call. The first Exa key came back with its quota exhausted (`keyQuotaExhausted`), so the gateway switched to a second key and the request succeeded. The call chain records both attempts, showing which provider was hit, which key was used, and whether the result was degraded.
+
+![Search playground page](docs/images/playground.png)
+
+**Provider configuration** — providers are ordered by priority. Global QPS and three-tier quotas act as a fallback that individual keys inherit when left blank; timeout, max key attempts per provider, breaker threshold and cooldown are all configurable.
+
+![Provider configuration page](docs/images/provider-config.png)
+
+**Usage statistics** — aggregated by attempt, with 24-hour and 14-day trends, plus per-provider and per-key success rate, average latency and last error.
+
+![Usage statistics page](docs/images/usage.png)
+
+**API reference** — built-in documentation covering authentication, request format, and where providers differ (for example on pagination).
+
+![API reference page](docs/images/api-reference.png)
+
 ## Quick start
 
 ### npm
 
-Requires **Node.js >= 20**.
+Requires **Node.js >= 22** (24 recommended, Active LTS).
 
 ```bash
 npm install -g searchhub
 
-export SEARCHHUB_ADMIN_PASSWORD='change-me'
-export SEARCHHUB_SECRET='replace-with-a-long-random-secret'
+export SEARCHHUB_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+export SEARCHHUB_ADMIN_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(12).toString('base64url'))")
 searchhub start
 ```
 
 Open <http://localhost:8787> and sign in with `SEARCHHUB_ADMIN_PASSWORD`.
+
+> These two values protect your **upstream provider keys** and your **admin login**. The `change-me` placeholders in older examples are not safe defaults — using them makes key encryption pointless.
+> `SEARCHHUB_SECRET` is the master key used to decrypt stored provider keys. **Set it once and never change it** — changing it makes already-stored keys undecryptable.
 
 For a quick trial:
 
@@ -47,9 +79,10 @@ npx searchhub start
 
 ```bash
 curl -O https://raw.githubusercontent.com/woodcoal/SearchHub/main/docker-compose.yml
-cat > .env <<'EOF'
-SEARCHHUB_ADMIN_PASSWORD=change-me
-SEARCHHUB_SECRET=replace-with-a-long-random-secret
+
+cat > .env <<EOF
+SEARCHHUB_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+SEARCHHUB_ADMIN_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(12).toString('base64url'))")
 # Optional provider key seeding:
 # SERPER_KEYS=...
 # TAVILY_KEYS=...
@@ -60,7 +93,9 @@ EOF
 docker compose up -d --build
 ```
 
-Open <http://localhost:8787>. Configuration and logs are persisted in `./data`.
+Open <http://localhost:8787>. Data and logs are persisted in the `searchhub-data` Docker volume.
+
+> Note the heredoc uses `<<EOF` **without** quotes — that is what lets the shell expand `$(...)`. Node is used for generation because it is already a prerequisite of this project and behaves identically across platforms.
 
 Do not commit `.env`. In production, use your platform's secret manager for passwords and provider keys.
 
@@ -242,7 +277,7 @@ Default data directory:
 - Log retention defaults to 14 days; set `SEARCHHUB_LOG_RETENTION_DAYS=0` for permanent retention.
 - Runtime cooldown state, usage counters, and statistics are in memory and reset on restart. Multi-instance deployments require a Redis-backed implementation.
 
-See [`.env.example`](./.env.example) for all environment variables.
+See [`.env.example`](./.env.example) for all environment variables, [docs/data-and-settings.md](./docs/data-and-settings.md) for the directory layout and admin password recovery, and [docs/logging.md](./docs/logging.md) for log rotation and retention. The built-in default quota table and provider-level inheritance rules are in [docs/quotas.md](./docs/quotas.md).
 
 ## Development
 
@@ -266,20 +301,34 @@ The repository includes a multi-stage `Dockerfile` and `docker-compose.yml`:
 
 ```bash
 docker build -t searchhub:local .
+
 docker run --rm -p 8787:8787 \
-  -e SEARCHHUB_ADMIN_PASSWORD=change-me \
-  -e SEARCHHUB_SECRET=replace-with-a-long-random-secret \
+  -e SEARCHHUB_SECRET="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")" \
+  -e SEARCHHUB_ADMIN_PASSWORD="$(node -e "console.log(require('crypto').randomBytes(12).toString('base64url'))")" \
   -v searchhub-data:/data \
   searchhub:local
 ```
 
 The image:
 
+- is based on **Node.js 24** (Active LTS)
 - listens on `0.0.0.0:8787`
 - uses `SEARCHHUB_HOME=/data`
-- runs as the non-root `searchhub` user
+- runs as the **non-root** `searchhub` user (uid 10001)
 - checks `GET /api/health` as its container healthcheck
 - persists configuration, encrypted keys, and logs under `/data`
+
+## Documentation
+
+Long-form operational docs currently ship in Chinese (the project's primary language):
+
+| Doc | Covers |
+|---|---|
+| [docs/quotas.md](./docs/quotas.md) | Three-tier quotas, QPS token bucket, built-in default quota table, provider-level inheritance |
+| [docs/logging.md](./docs/logging.md) | Daily log rotation and retention, call logs, usage statistics semantics |
+| [docs/data-and-settings.md](./docs/data-and-settings.md) | Data directory, system settings, admin password precedence and recovery, data migration |
+| [docs/providers.md](./docs/providers.md) | Provider capability matrix, fault classification, circuit breaker, adding a provider |
+| [docs/limitations.md](./docs/limitations.md) | **Known limitations and when not to use SearchHub — read this before deploying** |
 
 ## License
 

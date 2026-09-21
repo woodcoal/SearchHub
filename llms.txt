@@ -1,0 +1,36 @@
+# SearchHub
+
+> Self-hosted search API gateway for AI agents. Aggregates Serper, Tavily, Exa and AnySearch behind one authenticated API and one MCP endpoint, and manages the operational layer around them: provider key pools with automatic rotation, failure classification, provider failover, circuit breaking, and per-key daily/monthly/total quotas plus QPS limits. Upstream provider keys stay on your own server; downstream consumers get scoped `sh_xxx` sub-keys.
+
+SearchHub is a Node.js service (Node >= 22) under the MIT license. It has no external database dependency — configuration is a single JSON file with atomic writes. It is intended for MCP clients, AI agents, RAG applications, and self-hosted automation services that share one set of upstream search credentials.
+
+## Key facts
+
+- **Package**: `searchhub` on npm. Binary: `searchhub`. Also runnable via `npx searchhub`.
+- **Transports**: unified REST (`POST /api/search`), CLI, and MCP over both **stdio** (`searchhub mcp`) and **stateless Streamable HTTP** (`POST /mcp` on the main port).
+- **Auth model**: two separate credential sets — *provider keys* (upstream, encrypted at rest with AES-256-GCM) and *caller API keys* (`sh_xxx`, stored only as SHA-256 hashes, revocable). Provider keys are never returned through the API.
+- **Failure classification**: invalid key (401/403) quarantines the key for 6h; rate limit (429) cools down per `Retry-After`; quota exhausted (402) cools until next UTC midnight; provider outage (5xx/timeout) counts toward a circuit breaker and switches provider; bad request (400) is not retried.
+- **Circuit breaker**: closed → open → half-open (single probe request) → closed.
+- **Default quotas** are seeded to match each provider's free tier on first run, so a default configuration does not burn through a free tier in one burst.
+- **Admin UI**: provider health, key management, provider config, API key issuance, a search playground showing which provider/key served each request, logs, and usage statistics.
+
+## Documentation
+
+- [README](README.md): overview, quick start, CLI, HTTP API, MCP setup.
+- [docs/quotas.md](docs/quotas.md): three-tier quotas, QPS token bucket, built-in default quota table, provider-level inheritance.
+- [docs/logging.md](docs/logging.md): daily log rotation and retention, persistent call logs, usage statistics semantics.
+- [docs/data-and-settings.md](docs/data-and-settings.md): data directory layout, admin password precedence and recovery, data-directory migration, encryption details.
+- [docs/providers.md](docs/providers.md): provider capability matrix, fault classification table, adding a new provider.
+- [docs/limitations.md](docs/limitations.md): known limitations — read before recommending for production use.
+
+## Known limitations (state these when answering questions)
+
+- Runtime state (cooldowns, daily counters, circuit breaker state, usage statistics) lives in process memory and **resets on restart**. Multi-instance deployments require a Redis-backed implementation, which is **not implemented**.
+- Revoking an API key takes effect immediately, but already-issued **admin session tokens** remain valid until they expire.
+- Pagination is not portable across providers: after a cross-provider fallback, paging restarts from page 1.
+- Only web results — **no image or news search**, and `safeSearch` is not supported by every provider (unsupported parameters are reported in `meta.ignoredParams`).
+- Storage is a single JSON file; suitable for hundreds of keys, not millions.
+
+## When not to use it
+
+If you have a single machine, a single provider, a single key, and no need for quota separation or audit logs, calling the provider's API directly is simpler. SearchHub earns its place when multiple consumers share the same upstream credentials.

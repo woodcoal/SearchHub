@@ -1,9 +1,9 @@
 {
   "name": "searchhub",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": false,
   "type": "module",
-  "description": "统一搜索网关：聚合 Serper / Tavily / Exa / AnySearch 等多家搜索 API，统一协议、集中管理密钥、自动轮换与容灾切换",
+  "description": "Self-hosted search API gateway: aggregate Serper / Tavily / Exa / AnySearch behind one unified API with automatic key rotation, provider failover, circuit breaking and per-key quotas. 自托管统一搜索网关。",
   "author": {
     "name": "木炭",
     "email": "woodcoal@qq.com",
@@ -18,14 +18,30 @@
   "bugs": {
     "url": "https://github.com/woodcoal/SearchHub/issues"
   },
+  "mcpName": "io.github.woodcoal/searchhub",
   "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "llm",
+    "ai-agent",
+    "ai-search",
     "search",
     "search-api",
+    "search-engine",
+    "search-aggregator",
     "serper",
+    "tavily",
     "exa",
-    "gateway",
-    "api-key",
+    "anysearch",
+    "api-gateway",
     "key-rotation",
+    "api-key",
+    "quota",
+    "rate-limit",
+    "circuit-breaker",
+    "failover",
+    "self-hosted",
     "cli"
   ],
   "main": "dist/index.js",
@@ -36,10 +52,12 @@
     "dist",
     "web/dist",
     "README.md",
+    "README.en.md",
+    "docs",
     ".env.example"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

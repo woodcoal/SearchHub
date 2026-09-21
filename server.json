@@ -1,0 +1,45 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.woodcoal/searchhub",
+  "title": "SearchHub",
+  "description": "Aggregate Serper, Tavily, Exa and AnySearch behind one resilient search API. Rotates provider keys automatically, fails over between providers, opens a circuit after repeated failures, and enforces per-key daily/monthly/total quotas and QPS limits.",
+  "websiteUrl": "https://github.com/woodcoal/SearchHub",
+  "repository": {
+    "url": "https://github.com/woodcoal/SearchHub",
+    "source": "github"
+  },
+  "version": "0.1.9",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "searchhub",
+      "version": "0.1.9",
+      "runtimeHint": "npx",
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "SEARCHHUB_HOME",
+          "description": "Directory holding store.json, settings.json and logs. Defaults to ~/.search-hub. Set this if you keep provider keys somewhere other than the default location.",
+          "format": "string",
+          "isRequired": false
+        },
+        {
+          "name": "SEARCHHUB_SECRET",
+          "description": "Master key used to decrypt stored provider keys. Must match the value that was in effect when the keys were saved.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ],
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # engines 要求 >=22；Docker 镜像固定 24（Active LTS）。两者都测。
+        node: ['22', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Smoke test the health endpoint
+        run: |
+          set -e
+          export SEARCHHUB_HOME="$(mktemp -d)"
+          export SEARCHHUB_ADMIN_PASSWORD=ci-password
+          export SEARCHHUB_SECRET="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+          export PORT=8787
+          export SEARCHHUB_LOG_STDOUT=false
+
+          node dist/index.js &
+          SERVER_PID=$!
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8787/api/health >/dev/null; then
+              echo "GET /api/health OK"
+              kill "$SERVER_PID" || true
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "GET /api/health did not become ready in 30s" >&2
+          kill "$SERVER_PID" || true
+          exit 1
+
+      # 回归保护：容器 healthcheck 的 node -e 载荷必须是合法 JS。
+      # 历史 bug —— docker-compose.yml 少了收尾括号，导致节点无法解析、
+      # 容器被永久标记 unhealthy，而服务本身其实是正常的。
+      # 只做语法解析（new Function 不执行），不依赖网络或正在运行的服务。
+      - name: Validate container healthcheck commands
+        run: |
+          set -e
+          node -e '
+            const fs = require("fs");
+            let failed = false;
+
+            function check(label, code) {
+              try {
+                new Function(code);
+                console.log(label + ": syntax OK");
+              } catch (e) {
+                console.error(label + ": " + e.message);
+                failed = true;
+              }
+            }
+
+            const compose = fs.readFileSync("docker-compose.yml", "utf8");
+            const c = compose.match(/test:\s*\[\s*"CMD",\s*"node",\s*"-e",\s*"([^"]+)"/s);
+            if (!c) { console.error("docker-compose.yml: healthcheck test not found"); process.exit(1); }
+            check("docker-compose.yml healthcheck", c[1]);
+
+            const dockerfile = fs.readFileSync("Dockerfile", "utf8");
+            const d = dockerfile.match(/HEALTHCHECK[^\n]*\n\s*CMD node -e "([^"]+)"/s);
+            if (!d) { console.error("Dockerfile: HEALTHCHECK not found"); process.exit(1); }
+            check("Dockerfile healthcheck", d[1]);
+
+            process.exit(failed ? 1 : 0);
+          '

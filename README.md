@@ -2,6 +2,11 @@
 
 [English README](./README.en.md) · [npm](https://www.npmjs.com/package/searchhub) · [Issues](https://github.com/woodcoal/SearchHub/issues)
 
+[![npm version](https://img.shields.io/npm/v/searchhub)](https://www.npmjs.com/package/searchhub)
+[![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+[![node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
+[![CI](https://github.com/woodcoal/SearchHub/actions/workflows/ci.yml/badge.svg)](https://github.com/woodcoal/SearchHub/actions/workflows/ci.yml)
+
 > 面向 AI Agent 的自托管搜索容灾网关
 >
 > **One protocol. Multiple search providers. Automatic key rotation and failover.**
@@ -22,11 +27,33 @@ SearchHub 把 Serper、Tavily、Exa、AnySearch 等搜索 API 统一成一个协
 - HTTP API、CLI、MCP 和管理后台统一提供
 - 自托管，密钥和调用日志留在自己的机器上
 
+## 界面预览
+
+**概览** —— 每个供应商一张卡片：熔断状态、可用密钥数、冷却 / 隔离数、能力标签与全局默认配额。
+
+![概览页](docs/images/overview.png)
+
+**搜索调试** —— 一次真实调用。第一把 Exa 密钥返回配额耗尽（`keyQuotaExhausted`），系统自动换到第二把并成功返回；调用链路把两次尝试完整记录下来，一眼看清命中了谁、用了哪把 Key、有没有降级。
+
+![搜索调试页](docs/images/playground.png)
+
+**供应商配置** —— 按权重（优先级）排序。全局 QPS 与三级配额可作为兜底，密钥里留空的字段自动继承；超时、单供应商最大换 Key 次数、熔断阈值与冷却时长都可调。
+
+![供应商配置页](docs/images/provider-config.png)
+
+**用量统计** —— 按尝试次数统计，含最近 24 小时与 14 天趋势、分供应商与分密钥的成功率、平均耗时与最近错误。
+
+![用量统计页](docs/images/usage.png)
+
+**API 接口** —— 内置接口文档：认证方式、请求格式，以及各供应商在分页上的能力差异。
+
+![API 接口页](docs/images/api-reference.png)
+
 ## 30 秒启动
 
 ### npm 全局安装
 
-要求 **Node.js >= 20**。
+要求 **Node.js >= 22**（推荐 24，Active LTS）。
 
 ```bash
 npm install -g searchhub
@@ -35,13 +62,16 @@ searchhub start
 
 打开 <http://localhost:8787>，使用启动日志中的管理密码登录后台。
 
-生产环境建议固定管理密码和加密密钥：
+生产环境务必固定管理密码和加密密钥。下面两条命令可以直接生成强随机值：
 
 ```bash
-export SEARCHHUB_ADMIN_PASSWORD='change-me'
-export SEARCHHUB_SECRET='replace-with-a-long-random-secret'
+export SEARCHHUB_SECRET=$(openssl rand -hex 32)
+export SEARCHHUB_ADMIN_PASSWORD=$(openssl rand -base64 18)
 searchhub start
 ```
+
+> 这两项保护的是你的**上游供应商密钥**和**后台登录**。示例里出现的 `change-me` 只是占位符，直接沿用会让密钥加密形同虚设。
+> 另外 `SEARCHHUB_SECRET` 一旦设置就不要再改——它是密钥的解密主密钥，改了之后已落盘的供应商密钥将无法解密。
 
 ### npx 试用
 
@@ -53,9 +83,10 @@ npx searchhub start
 
 ```bash
 curl -O https://raw.githubusercontent.com/woodcoal/SearchHub/main/docker-compose.yml
-cat > .env <<'EOF'
-SEARCHHUB_ADMIN_PASSWORD=change-me
-SEARCHHUB_SECRET=replace-with-a-long-random-secret
+
+cat > .env <<EOF
+SEARCHHUB_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+SEARCHHUB_ADMIN_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(12).toString('base64url'))")
 # 可选：启动时自动加入供应商密钥
 # SERPER_KEYS=...
 # TAVILY_KEYS=...
@@ -66,7 +97,10 @@ EOF
 docker compose up -d --build
 ```
 
-打开 <http://localhost:8787>。数据和日志保存在当前目录的 `data/` 中。
+打开 <http://localhost:8787>。数据和日志保存在 Docker 命名卷 `searchhub-data` 中。
+
+> 注意 heredoc 用的是 `<<EOF` 而不是 `<<'EOF'`（不加引号），这样 `$(...)` 才会被 shell 展开。用 Node 生成是因为它本来就是本项目的运行前提，且跨平台一致。
+> 生成的值请自行保管：`SEARCHHUB_SECRET` 是供应商密钥的解密主密钥，**设置之后不要再更改**；改了已落盘的密钥将无法解密。
 
 > 不要把 `.env` 提交到 Git。生产环境请把 `SEARCHHUB_ADMIN_PASSWORD`、`SEARCHHUB_SECRET` 和供应商密钥放进安全的 Secret 管理系统。
 
@@ -225,6 +259,9 @@ SearchHub 会将各供应商不同的返回结构和错误码归一化。新增�
 - 单供应商最大换 Key 次数
 - 熔断阈值和冷却时长
 
+**内置默认配额**（按各家免费额度预设）、供应商级继承规则与三级配额的完整说明见 [docs/quotas.md](./docs/quotas.md)；
+故障分类的完整判定表与熔断状态机见 [docs/providers.md](./docs/providers.md)。
+
 ## CLI
 
 ```bash
@@ -261,6 +298,8 @@ searchhub mcp --http --port 8788        # 启动 HTTP MCP
 - 运行时冷却状态、统计和用量在内存中，重启会清零；多实例部署需要 Redis 化改造。
 
 完整环境变量见 [`.env.example`](./.env.example)。
+目录结构、后台密码优先级与找回、数据目录迁移、认证体系细节见 [docs/data-and-settings.md](./docs/data-and-settings.md)；
+日志切分与保留策略、调用日志、用量统计口径见 [docs/logging.md](./docs/logging.md)。
 
 ## 从源码开发
 
@@ -284,20 +323,32 @@ npm run dev:web   # Vite 前端，默认 http://localhost:5173
 
 ```bash
 docker build -t searchhub:local .
+
 docker run --rm -p 8787:8787 \
-  -e SEARCHHUB_ADMIN_PASSWORD=change-me \
-  -e SEARCHHUB_SECRET=replace-with-a-long-random-secret \
+  -e SEARCHHUB_SECRET="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")" \
+  -e SEARCHHUB_ADMIN_PASSWORD="$(node -e "console.log(require('crypto').randomBytes(12).toString('base64url'))")" \
   -v searchhub-data:/data \
   searchhub:local
 ```
 
 容器内默认：
 
+- 基于 **Node.js 24**（Active LTS）
 - 监听 `0.0.0.0:8787`
 - `SEARCHHUB_HOME=/data`
-- 使用非 root 用户 `searchhub`
+- 使用**非 root** 用户 `searchhub`（uid 10001）
 - `GET /api/health` 作为 Docker healthcheck
 - `/data` 保存配置、密钥密文和日志
+
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [docs/quotas.md](./docs/quotas.md) | 三级配额、QPS 令牌桶、**内置默认配额表**、供应商级继承规则 |
+| [docs/logging.md](./docs/logging.md) | 日志按天切分与保留策略、调用日志、用量统计口径 |
+| [docs/data-and-settings.md](./docs/data-and-settings.md) | 数据目录、系统设置、后台密码优先级与找回、数据迁移 |
+| [docs/providers.md](./docs/providers.md) | 供应商能力矩阵、故障分类与熔断、如何扩展新供应商 |
+| [docs/limitations.md](./docs/limitations.md) | **已知限制与适用边界——部署前请先读这一篇** |
 
 ## 许可
 

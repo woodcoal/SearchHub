@@ -7,4 +7,11 @@ data/
 *.err
 run.err
 .DS_Store
-package-lock.json
+
+# 本地助手配置，不对外提交。
+# 面向用户的技能包在 skill/searchhub/，那个目录需要保留。
+.codebuddy/
+
+# 注意：package-lock.json 必须入库（不要忽略）。
+# Dockerfile 使用 `npm ci`，它要求锁文件存在且与 package.json 一致；
+# 忽略锁文件会让构建结果不可复现。
