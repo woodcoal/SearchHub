@@ -117,8 +117,9 @@ npm publish                   # 会自动执行 prepublishOnly（即 npm run bui
 ~/.search-hub/
 ├── store.json                    供应商配置 + 密钥密文 + API Key 哈希
 └── log/
-    ├── searchhub-2026-09-21.log   按天切分，跨天自动新建
-    └── searchhub-2026-09-22.log
+    ├── searchhub-2026-09-21.log   运行日志，按天切分，跨天自动新建
+    ├── searchhub-2026-09-22.log
+    └── calls.jsonl                调用日志，JSONL，保留最近 1000 条
 ```
 
 - 日志文件名为 `searchhub-YYYY-MM-DD.log`，**跨天自动切换，无需额外轮转组件**
@@ -198,6 +199,7 @@ searchhub start --home D:/searchhub-data
 | `SEARCHHUB_LOG_DIR` | 日志目录，默认 `<home>/log` |
 | `SEARCHHUB_LOG_RETENTION_DAYS` | 日志保留天数，默认 `14`；设为 `0` 永久保留 |
 | `SEARCHHUB_LOG_STDOUT` | 是否同时输出到控制台，默认 `true` |
+| `SEARCHHUB_CALL_LOG_FILE` | 调用日志持久化文件，默认 `<logDir>/calls.jsonl` |
 | `SEARCHHUB_SECRET` | 供应商密钥 AES-256-GCM 加密落盘；留空则明文存储并告警 |
 | `SEARCHHUB_ADMIN_PASSWORD` | **管理后台登录密码**，留空则随机生成并打印在启动日志 |
 | `SEARCHHUB_SESSION_TTL_MS` | 登录会话有效期，默认 8 小时 |
@@ -388,6 +390,20 @@ searchhub mcp --http --port 8788 --path /api/mcp
 - 自动刷新（5 秒）便于边压测边观察；每行的 ⋮ 可以看到该条的完整原始 JSON
 
 接口：`GET /api/admin/logs?date=2026-09-21&level=warn&onlySearch=true&keyword=openai&limit=200`
+
+### 调用日志（持久化）
+
+运行日志是「服务视角」，调用日志是「搜索视角」：**每次密钥 / 供应商尝试写一条**，
+含时间、供应商、密钥、成功与否、故障码、耗时，落盘在 `<logDir>/calls.jsonl`（JSONL，一行一条）。
+
+- **重启不清零**：启动时自动加载文件尾部的记录并按实际继续追加，内存与文件都保留最近 **1000 条**
+- **文件有界**：追加满一轮（1000 条）后整体重写一次，文件稳定在 1000~2000 行，不会无限增长
+- 读取时只取文件尾部 2MB，损坏的行自动跳过，不影响其余历史
+- 写失败静默忽略——日志不能拖垮搜索主流程
+- 管理后台「日志」页顶部的「调用记录（持久化）」区块可查看，支持最近 50 / 200 / 1000 条切换
+- 首页「调用日志」区块与它是同一份数据（首页只取最近 30 条）
+
+接口：`GET /api/admin/calls?limit=1000`（`limit` 上限 1000，返回 `file`、`total`、`entries`）
 
 命令行：
 

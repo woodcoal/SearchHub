@@ -57,6 +57,17 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [authed, setAuthed] = useState(Boolean(getAdminToken()));
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  /** 移动端侧滑菜单开关 */
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -89,131 +100,166 @@ export default function App() {
     return () => clearInterval(timer);
   }, [authed, refresh]);
 
+  const current = TABS.find((item) => item.id === tab) ?? TABS[0]!;
+
   if (!authed) {
     return <Login onSuccess={() => setAuthed(true)} />;
   }
 
+  const selectTab = (id: TabId) => {
+    setTab(id);
+    setMenuOpen(false);
+  };
+
   return (
     <div className="app">
       <Toaster />
-      <header className="header">
-        <div className="brand">
-          <Logo size={42} />
+
+      <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
+        <div className="sidebar-brand">
+          <Logo size={38} />
           <div className="brand-text">
             <h1>SearchHub</h1>
-            <p>统一搜索网关 · 多供应商聚合 · 密钥轮换与自动容灾</p>
+            <p>统一搜索网关</p>
           </div>
+          <button
+            className="btn sm icon-btn ghost sidebar-close"
+            aria-label="收起菜单"
+            onClick={() => setMenuOpen(false)}
+          >
+            <Icon name="close" />
+          </button>
         </div>
 
-        <div className="header-tools">
+        <nav className="sidebar-nav">
+          {TABS.map((item) => (
+            <button
+              key={item.id}
+              className={`nav-item ${tab === item.id ? 'active' : ''}`}
+              onClick={() => selectTab(item.id)}
+            >
+              <Icon name={item.icon} size={16} />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-foot">
           {state && (
             <span
               className={`badge ${state.encryptionEnabled ? 'ok' : 'warn'}`}
               title={state.encryptionEnabled ? '供应商密钥已加密存储' : '供应商密钥明文存储，建议设置 SEARCHHUB_SECRET'}
             >
               <Icon name={state.encryptionEnabled ? 'shield' : 'info'} />
-              <span className="btn-label">
-                {state.encryptionEnabled ? '密钥已加密' : '密钥明文'}
-              </span>
+              {state.encryptionEnabled ? '密钥已加密' : '密钥明文'}
             </span>
           )}
-          <button
-            className="btn sm icon-btn"
-            title={theme === 'dark' ? '切换亮色主题' : '切换深色主题'}
-            aria-label="切换主题"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          >
-            <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
-            <span className="btn-label">{theme === 'dark' ? '亮色' : '深色'}</span>
-          </button>
-          <button
-            className="btn sm icon-btn"
-            title="刷新数据"
-            aria-label="刷新"
-            disabled={loading}
-            onClick={() => void refresh()}
-          >
-            <Icon name="refresh" className={loading ? 'spin' : undefined} />
-            <span className="btn-label">刷新</span>
-          </button>
-          <button
-            className="btn sm icon-btn ghost"
-            title="退出登录"
-            aria-label="退出"
-            onClick={() => {
-              setAdminToken('');
-              setAuthed(false);
-              setState(null);
-            }}
-          >
-            <Icon name="logout" />
-            <span className="btn-label">退出</span>
-          </button>
+          <div className="sidebar-tools">
+            <button
+              className="btn sm icon-btn"
+              title={theme === 'dark' ? '切换亮色主题' : '切换深色主题'}
+              aria-label="切换主题"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            >
+              <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+              <span className="btn-label">{theme === 'dark' ? '亮色' : '深色'}</span>
+            </button>
+            <button
+              className="btn sm icon-btn"
+              title="刷新数据"
+              aria-label="刷新"
+              disabled={loading}
+              onClick={() => void refresh()}
+            >
+              <Icon name="refresh" className={loading ? 'spin' : undefined} />
+              <span className="btn-label">刷新</span>
+            </button>
+            <button
+              className="btn sm icon-btn ghost"
+              title="退出登录"
+              aria-label="退出"
+              onClick={() => {
+                setAdminToken('');
+                setAuthed(false);
+                setState(null);
+              }}
+            >
+              <Icon name="logout" />
+              <span className="btn-label">退出</span>
+            </button>
+          </div>
         </div>
-      </header>
+      </aside>
 
-      <nav className="tabs">
-        {TABS.map((item) => (
+      <div className={`overlay ${menuOpen ? 'show' : ''}`} onClick={() => setMenuOpen(false)} />
+
+      <main className="main">
+        <header className="topbar">
           <button
-            key={item.id}
-            className={`tab ${tab === item.id ? 'active' : ''}`}
-            onClick={() => setTab(item.id)}
+            className="btn sm icon-btn menu-btn"
+            aria-label="打开菜单"
+            onClick={() => setMenuOpen(true)}
           >
-            <Icon name={item.icon} size={15} />
-            <span>{item.label}</span>
+            <Icon name="menu" />
           </button>
-        ))}
-      </nav>
+          <h2 className="page-title">{current.label}</h2>
+          <div className="topbar-tools">
+            {state && (
+              <span className="muted mono">
+                {state.providers.filter((p) => p.settings.enabled).length}/{state.providers.length} 供应商启用
+              </span>
+            )}
+          </div>
+        </header>
 
-      {error && <div className="error-box">{error}</div>}
+        {error && <div className="error-box">{error}</div>}
 
-      {tab === 'about' ? (
-        <About />
-      ) : !state ? (
-        <div className="spinner">加载中…</div>
-      ) : tab === 'overview' ? (
-        <Overview state={state} />
-      ) : tab === 'usage' ? (
-        <UsagePanel />
-      ) : tab === 'keys' ? (
-        <KeysPanel state={state} onRefresh={refresh} />
-      ) : tab === 'providers' ? (
-        <ProvidersPanel state={state} onRefresh={refresh} />
-      ) : tab === 'access' ? (
-        <ApiKeysPanel />
-      ) : tab === 'playground' ? (
-        <Playground state={state} />
-      ) : tab === 'logs' ? (
-        <LogsPanel />
-      ) : tab === 'settings' ? (
-        <SettingsPanel />
-      ) : tab === 'api-docs' ? (
-        <ApiDocs />
-      ) : (
-        <Guide />
-      )}
+        {tab === 'about' ? (
+          <About />
+        ) : !state ? (
+          <div className="spinner">加载中…</div>
+        ) : tab === 'overview' ? (
+          <Overview state={state} />
+        ) : tab === 'usage' ? (
+          <UsagePanel />
+        ) : tab === 'keys' ? (
+          <KeysPanel state={state} onRefresh={refresh} />
+        ) : tab === 'providers' ? (
+          <ProvidersPanel state={state} onRefresh={refresh} />
+        ) : tab === 'access' ? (
+          <ApiKeysPanel />
+        ) : tab === 'playground' ? (
+          <Playground state={state} />
+        ) : tab === 'logs' ? (
+          <LogsPanel />
+        ) : tab === 'settings' ? (
+          <SettingsPanel />
+        ) : tab === 'api-docs' ? (
+          <ApiDocs />
+        ) : (
+          <Guide />
+        )}
 
-      <footer className="footer">
-        <div className="footer-main">
-          <Logo size={18} />
-          <span>SearchHub v{__APP_VERSION__} · © 2026 木炭 · MIT License</span>
-          <a
-            className="footer-repo"
-            href="https://github.com/woodcoal/SearchHub"
-            target="_blank"
-            rel="noreferrer"
-            title="https://github.com/woodcoal/SearchHub"
-          >
-            <Icon name="link" size={14} />
-            github.com/woodcoal/SearchHub
-          </a>
-        </div>
-        <div className="footer-links">
-          <button className="link-btn" onClick={() => setTab('about')}>
-            <Icon name="info" size={14} /> 关于
-          </button>
-        </div>
-      </footer>
+        <footer className="footer">
+          <div className="footer-main">
+            <Logo size={18} />
+            <a
+              className="footer-version"
+              href="https://github.com/woodcoal/SearchHub"
+              target="_blank"
+              rel="noreferrer"
+              title="https://github.com/woodcoal/SearchHub"
+            >
+              SearchHub v{__APP_VERSION__} · © 2026 木炭 · MIT License
+            </a>
+          </div>
+          <div className="footer-links">
+            <button className="link-btn" onClick={() => selectTab('about')}>
+              <Icon name="info" size={14} /> 关于
+            </button>
+          </div>
+        </footer>
+      </main>
     </div>
   );
 }

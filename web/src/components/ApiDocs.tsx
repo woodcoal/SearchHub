@@ -201,6 +201,14 @@ export default function ApiDocs() {
               </td>
             </tr>
             <tr>
+              <td>GET</td>
+              <td className="mono">/api/admin/calls</td>
+              <td>登录</td>
+              <td>
+                调用日志（持久化）：<span className="mono">limit</span> 最多 1000，重启后依然保留
+              </td>
+            </tr>
+            <tr>
               <td>POST</td>
               <td className="mono">/mcp</td>
               <td>API Key</td>

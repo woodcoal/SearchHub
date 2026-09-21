@@ -17,6 +17,8 @@ export interface AppConfig {
   dataFile: string;
   /** 日志目录，默认 <dataDir>/log */
   logDir: string;
+  /** 调用日志持久化文件（JSONL，保留最近 1000 条），默认 <logDir>/calls.jsonl */
+  callLogFile: string;
   /** 日志保留天数，<=0 表示永久保留 */
   logRetentionDays: number;
   /** 是否同时输出到 stdout */
@@ -61,6 +63,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   const homeDir = env.SEARCHHUB_HOME?.trim() ? resolve(env.SEARCHHUB_HOME.trim()) : defaultHome();
   const dataDir = settings.dataDir ?? homeDir;
+  const logDir = env.SEARCHHUB_LOG_DIR ? resolve(env.SEARCHHUB_LOG_DIR) : join(dataDir, 'log');
 
   return {
     port: Number.isFinite(port) ? port : 8787,
@@ -70,7 +73,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     settings,
     dataDir,
     dataFile: env.DATA_FILE ? resolve(env.DATA_FILE) : join(dataDir, 'store.json'),
-    logDir: env.SEARCHHUB_LOG_DIR ? resolve(env.SEARCHHUB_LOG_DIR) : join(dataDir, 'log'),
+    logDir,
+    callLogFile: env.SEARCHHUB_CALL_LOG_FILE
+      ? resolve(env.SEARCHHUB_CALL_LOG_FILE)
+      : join(logDir, 'calls.jsonl'),
     logRetentionDays: toInt(env.SEARCHHUB_LOG_RETENTION_DAYS, 14),
     logToStdout: env.SEARCHHUB_LOG_STDOUT !== 'false',
     secret: env.SEARCHHUB_SECRET || undefined,

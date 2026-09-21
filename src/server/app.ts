@@ -218,6 +218,18 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
 
       admin.get('/state', async () => hub.state());
 
+      /** 调用日志：每次密钥/供应商尝试的记录，持久化在 calls.jsonl，重启后保留 */
+      admin.get('/calls', async (request: any) => {
+        const query = (request.query ?? {}) as Record<string, string | undefined>;
+        const limit = Math.min(Math.max(Number(query.limit ?? 100) || 100, 1), 1000);
+        return {
+          file: hub.stats.logFile ?? config.callLogFile,
+          limit,
+          total: hub.stats.recentLog(1000).length,
+          entries: hub.stats.recentLog(limit),
+        };
+      });
+
       /** 最近搜索 / 运行日志：按天读取日志文件尾部，支持级别、关键词与「仅搜索」过滤 */
       admin.get('/logs', async (request: any) => {
         const query = (request.query ?? {}) as Record<string, string | undefined>;

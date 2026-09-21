@@ -5,6 +5,7 @@ import { SearchOrchestrator } from './core/orchestrator.js';
 import { KeyPool } from './keys/keyPool.js';
 import { SecretBox } from './keys/secretBox.js';
 import { PROVIDERS } from './providers/index.js';
+import { FileCallLog } from './stats/callLog.js';
 import { Stats } from './stats/stats.js';
 import { Store } from './store/store.js';
 
@@ -12,6 +13,8 @@ import { Store } from './store/store.js';
 const QUARANTINE_MS = 6 * 60 * 60 * 1000;
 /** 被限流但没有 Retry-After 时的默认冷却 */
 const RATE_LIMIT_COOLDOWN_MS = 60_000;
+/** 调用日志最多保留的条数（内存与文件一致） */
+const CALL_LOG_LIMIT = 1000;
 
 export function createHub(config: AppConfig): SearchHub {
   const secretBox = new SecretBox(config.secret);
@@ -22,7 +25,8 @@ export function createHub(config: AppConfig): SearchHub {
   }
 
   const store = new Store(config.dataFile, secretBox, config.seedKeys);
-  const stats = new Stats();
+  // 调用日志持久化：<logDir>/calls.jsonl，重启后自动加载最近 CALL_LOG_LIMIT 条
+  const stats = new Stats(CALL_LOG_LIMIT, new FileCallLog(config.callLogFile, CALL_LOG_LIMIT));
   const pools = new Map<string, KeyPool>();
   const breakers = new Map<string, CircuitBreaker>();
 

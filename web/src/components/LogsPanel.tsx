@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, type LogEntry, type LogsResponse } from '../api';
+import { api, type CallLogEntry, type LogEntry, type LogsResponse } from '../api';
 import Icon from './Icon';
 import { toastErr } from './Toast';
 
@@ -48,6 +48,21 @@ export default function LogsPanel() {
   const [data, setData] = useState<LogsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [auto, setAuto] = useState(false);
+  const [calls, setCalls] = useState<{
+    file: string;
+    limit: number;
+    total: number;
+    entries: CallLogEntry[];
+  } | null>(null);
+  const [callsLimit, setCallsLimit] = useState(100);
+
+  const loadCalls = useCallback(async (limit: number) => {
+    try {
+      setCalls(await api.calls(limit));
+    } catch (err) {
+      toastErr((err as Error).message);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,13 +80,95 @@ export default function LogsPanel() {
   }, [load]);
 
   useEffect(() => {
+    void loadCalls(callsLimit);
+  }, [loadCalls, callsLimit]);
+
+  useEffect(() => {
     if (!auto) return;
-    const timer = setInterval(() => void load(), 5000);
+    const timer = setInterval(() => {
+      void load();
+      void loadCalls(callsLimit);
+    }, 5000);
     return () => clearInterval(timer);
-  }, [auto, load]);
+  }, [auto, load, loadCalls, callsLimit]);
 
   return (
     <>
+      <section className="card">
+        <div className="spread">
+          <div>
+            <h3>
+              <Icon name="key" size={15} /> 调用记录（持久化）
+            </h3>
+            <p className="sub">
+              每次密钥 / 供应商尝试的明细，落盘在 <span className="mono">{calls?.file ?? '…'}</span>
+              ，重启后自动加载，最多保留最近 1000 条
+            </p>
+          </div>
+          <div className="row">
+            <select
+              value={callsLimit}
+              onChange={(e) => setCallsLimit(Number(e.target.value))}
+              style={{ width: 130 }}
+            >
+              <option value={50}>最近 50 条</option>
+              <option value={200}>最近 200 条</option>
+              <option value={1000}>最近 1000 条</option>
+            </select>
+            <button className="btn sm icon-btn" onClick={() => void loadCalls(callsLimit)}>
+              <Icon name="refresh" />
+              <span className="btn-label">刷新</span>
+            </button>
+          </div>
+        </div>
+
+        <table className="table-stack">
+          <thead>
+            <tr>
+              <th style={{ width: 165 }}>时间</th>
+              <th style={{ width: 100 }}>供应商</th>
+              <th style={{ width: 90 }}>密钥</th>
+              <th style={{ width: 80 }}>结果</th>
+              <th style={{ width: 85 }}>耗时</th>
+              <th>错误码 / 消息</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(calls?.entries ?? []).map((entry, index) => (
+              <tr key={`${entry.at}-${index}`}>
+                <td data-label="时间" className="mono muted">
+                  {new Date(entry.at).toLocaleString()}
+                </td>
+                <td data-label="供应商">{entry.provider}</td>
+                <td data-label="密钥" className="mono muted">
+                  {entry.keyId ? String(entry.keyId).slice(0, 8) : '—'}
+                </td>
+                <td data-label="结果">
+                  <span className={`badge ${entry.ok ? 'ok' : 'danger'}`}>
+                    {entry.ok ? '成功' : '失败'}
+                  </span>
+                </td>
+                <td data-label="耗时" className="mono">
+                  {entry.tookMs}ms
+                </td>
+                <td data-label="错误码 / 消息" className="muted">
+                  <span className="ellipsis" title={`${entry.code ?? ''} ${entry.message ?? ''}`.trim()}>
+                    {entry.code ? `${entry.code} ` : ''}
+                    {entry.message ?? '—'}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {(calls?.entries ?? []).length === 0 && (
+          <div className="empty">
+            暂无调用记录（共 {calls?.total ?? 0} 条）——每次密钥尝试都会记录在这里，重启后依然保留
+          </div>
+        )}
+      </section>
+
       <section className="card">
         <div className="spread">
           <div>

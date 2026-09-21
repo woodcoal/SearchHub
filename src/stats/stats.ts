@@ -1,4 +1,5 @@
 import type { AttemptLog } from '../core/types.js';
+import { FileCallLog, type CallLogPersistence } from './callLog.js';
 
 export interface Counter {
   calls: number;
@@ -69,8 +70,8 @@ function dayKey(ts: number): string {
 }
 
 /**
- * 运行时统计：内存态，重启清零。
- * 除累计计数外，还按小时/天做时间桶，便于在「用量统计」里看趋势。
+ * 运行时统计：计数与时间桶是内存态（重启清零），
+ * 调用日志（每次密钥/供应商尝试的记录）会同步落盘，重启后自动加载。
  * 多实例部署时把这里换成 Redis 即可，接口保持不变。
  */
 export class Stats {
@@ -78,11 +79,23 @@ export class Stats {
   private readonly keys = new Map<string, Counter>();
   private readonly hourly = new Map<string, RawBucket>();
   private readonly daily = new Map<string, RawBucket>();
-  private readonly log: AttemptLog[] = [];
+  private log: AttemptLog[] = [];
   private readonly logLimit: number;
 
-  constructor(logLimit = 100) {
+  constructor(
+    logLimit = 1000,
+    private readonly persistence?: CallLogPersistence,
+  ) {
     this.logLimit = logLimit;
+    if (persistence) {
+      this.log = persistence.load().slice(0, logLimit);
+      if (persistence.needsCompact()) persistence.compact(this.log);
+    }
+  }
+
+  /** 调用日志文件的落地路径（未启用持久化时为空） */
+  get logFile(): string | null {
+    return this.persistence instanceof FileCallLog ? this.persistence.path : null;
   }
 
   record(
@@ -109,8 +122,15 @@ export class Stats {
     bump(this.daily, dayKey(now), ok, tookMs);
     this.prune(now);
 
-    this.log.unshift({ at: now, provider: providerId, keyId, ok, code, message, tookMs });
+    const entry: AttemptLog = { at: now, provider: providerId, keyId, ok, code, message, tookMs };
+    this.log.unshift(entry);
     if (this.log.length > this.logLimit) this.log.length = this.logLimit;
+
+    if (this.persistence) {
+      this.persistence.append(entry);
+      // 追加够一轮就整体重写一次，文件大小稳定在保留条数的 1~2 倍
+      if (this.persistence.needsCompact()) this.persistence.compact(this.log);
+    }
   }
 
   providerStats(providerId: string): Counter {

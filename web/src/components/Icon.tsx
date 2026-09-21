@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 export type IconName =
   | 'chart'
   | 'list'
+  | 'menu'
+  | 'close'
   | 'gauge'
   | 'key'
   | 'box'
@@ -42,6 +44,11 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M8 6h12M8 12h12M8 18h12" />
       <path d="M4 6h.01M4 12h.01M4 18h.01" />
+    </>
+  ),
+  menu: (
+    <>
+      <path d="M4 7h16M4 12h16M4 17h16" />
     </>
   ),
   gauge: (

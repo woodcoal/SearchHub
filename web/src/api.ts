@@ -263,8 +263,23 @@ export interface LogsResponse {
   entries: LogEntry[];
 }
 
+export interface CallLogEntry {
+  at: number;
+  provider: string;
+  keyId?: string;
+  ok: boolean;
+  code?: string;
+  message?: string;
+  tookMs: number;
+}
+
 export const api = {
   state: () => request<StateSnapshot>('/api/admin/state'),
+
+  calls: (limit = 100) =>
+    request<{ file: string; limit: number; total: number; entries: CallLogEntry[] }>(
+      `/api/admin/calls?limit=${limit}`,
+    ),
 
   usage: () => request<UsageSnapshot>('/api/admin/usage'),
 
