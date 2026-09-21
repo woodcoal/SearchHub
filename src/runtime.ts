@@ -60,6 +60,8 @@ export function createHub(config: AppConfig): SearchHub {
     providers: PROVIDERS,
     orchestrator,
     encryptionEnabled: secretBox.enabled,
+    settings: config.settings,
+    config,
   });
 
   hub.refreshAllPools();

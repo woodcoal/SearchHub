@@ -1,4 +1,9 @@
+import { existsSync, mkdirSync, renameSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import type { AppConfig } from '../config.js';
 import { KeyPool, type KeyRuntimeView, type ManagedKey } from '../keys/keyPool.js';
+import { logFiles } from '../logging.js';
+import type { SettingsStore } from '../settings.js';
 import { findProvider } from '../providers/index.js';
 import { Stats, type Counter } from '../stats/stats.js';
 import {
@@ -47,6 +52,16 @@ export interface StateSnapshot {
   encryptionEnabled: boolean;
 }
 
+export interface DataDirMigration {
+  dataDir: string;
+  dataFile: string;
+  logDir: string;
+  previousDataFile: string;
+  previousLogDir: string;
+  movedFiles: string[];
+  restarted: boolean;
+}
+
 export interface HubDeps {
   store: Store;
   stats: Stats;
@@ -55,6 +70,8 @@ export interface HubDeps {
   providers: SearchProvider[];
   orchestrator: SearchOrchestrator;
   encryptionEnabled: boolean;
+  settings: SettingsStore;
+  config: AppConfig;
 }
 
 export class SearchHub {
@@ -207,6 +224,60 @@ export class SearchHub {
       }),
     );
     return settings;
+  }
+
+  /**
+   * 切换数据目录并把现有数据迁移过去：
+   * 数据文件整体写入新位置，历史日志文件一并搬移（正在写入的当天日志除外），
+   * 设置写入 settings.json，随后日志立即改用新目录。
+   */
+  setDataDir(dir: string): DataDirMigration {
+    const target = resolve(dir.trim());
+    if (!target) throw new Error('目录不能为空');
+    mkdirSync(target, { recursive: true });
+
+    const previousDataFile = this.store.path;
+    const previousLogDir = this.deps.config.logDir;
+    const nextDataFile = join(target, 'store.json');
+    const nextLogDir = join(target, 'log');
+    const movedFiles: string[] = [];
+
+    if (resolve(previousDataFile) !== resolve(nextDataFile)) {
+      movedFiles.push(this.store.retarget(nextDataFile));
+    }
+
+    if (resolve(previousLogDir) !== resolve(nextLogDir) && existsSync(previousLogDir)) {
+      mkdirSync(nextLogDir, { recursive: true });
+      const inUse = join(previousLogDir, `searchhub-${new Date().toISOString().slice(0, 10)}.log`);
+      for (const name of logFiles(previousLogDir)) {
+        const source = join(previousLogDir, name);
+        const destination = join(nextLogDir, name);
+        if (resolve(source) === resolve(inUse)) continue; // 当天日志正在写入，留在原处
+        if (existsSync(destination)) continue;
+        try {
+          renameSync(source, destination);
+          movedFiles.push(destination);
+        } catch {
+          // 文件被占用（Windows 常见），跳过，下次迁移时再搬
+        }
+      }
+    }
+
+    this.deps.settings.setDataDir(target);
+    this.deps.config.dataDir = target;
+    this.deps.config.dataFile = nextDataFile;
+    this.deps.config.logDir = nextLogDir;
+    this.refreshAllPools();
+
+    return {
+      dataDir: target,
+      dataFile: nextDataFile,
+      logDir: nextLogDir,
+      previousDataFile,
+      previousLogDir,
+      movedFiles,
+      restarted: false,
+    };
   }
 
   refreshPool(providerId: string): void {

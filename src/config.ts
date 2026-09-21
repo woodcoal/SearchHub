@@ -1,16 +1,21 @@
 import { randomBytes } from 'node:crypto';
 import { join, resolve } from 'node:path';
-import { resolveHome } from './logging.js';
+import { defaultHome } from './logging.js';
+import { SettingsStore } from './settings.js';
 
 export interface AppConfig {
   port: number;
   host: string;
   logLevel: string;
-  /** 根目录，默认 ~/.search-hub */
+  /** 默认根目录 ~/.search-hub */
   homeDir: string;
+  /** 系统设置（数据目录、后台密码） */
+  settings: SettingsStore;
+  /** 实际数据目录：settings.dataDir ?? homeDir */
+  dataDir: string;
   /** 数据文件（供应商设置 + 密钥密文 + API Key 哈希） */
   dataFile: string;
-  /** 日志目录，默认 <homeDir>/log */
+  /** 日志目录，默认 <dataDir>/log */
   logDir: string;
   /** 日志保留天数，<=0 表示永久保留 */
   logRetentionDays: number;
@@ -48,15 +53,24 @@ function toInt(raw: string | undefined, fallback: number): number {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const port = Number(env.PORT ?? 8787);
   const providedPassword = env.SEARCHHUB_ADMIN_PASSWORD?.trim();
-  const homeDir = resolveHome(env);
+
+  const settingsFile = env.SEARCHHUB_SETTINGS_FILE
+    ? resolve(env.SEARCHHUB_SETTINGS_FILE)
+    : SettingsStore.defaultPath(env);
+  const settings = new SettingsStore(settingsFile);
+
+  const homeDir = env.SEARCHHUB_HOME?.trim() ? resolve(env.SEARCHHUB_HOME.trim()) : defaultHome();
+  const dataDir = settings.dataDir ?? homeDir;
 
   return {
     port: Number.isFinite(port) ? port : 8787,
     host: env.HOST ?? '0.0.0.0',
     logLevel: env.LOG_LEVEL ?? 'info',
     homeDir,
-    dataFile: env.DATA_FILE ? resolve(env.DATA_FILE) : join(homeDir, 'store.json'),
-    logDir: env.SEARCHHUB_LOG_DIR ? resolve(env.SEARCHHUB_LOG_DIR) : join(homeDir, 'log'),
+    settings,
+    dataDir,
+    dataFile: env.DATA_FILE ? resolve(env.DATA_FILE) : join(dataDir, 'store.json'),
+    logDir: env.SEARCHHUB_LOG_DIR ? resolve(env.SEARCHHUB_LOG_DIR) : join(dataDir, 'log'),
     logRetentionDays: toInt(env.SEARCHHUB_LOG_RETENTION_DAYS, 14),
     logToStdout: env.SEARCHHUB_LOG_STDOUT !== 'false',
     secret: env.SEARCHHUB_SECRET || undefined,

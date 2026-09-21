@@ -98,23 +98,26 @@ export interface LogDestination {
  * 同时保留 stdout 输出（可用 SEARCHHUB_LOG_STDOUT=false 关闭）。
  */
 export function createDailyLogDestination(options: {
-  dir: string;
+  /** 目录可能在运行时被修改（迁移数据目录），所以用取值函数而非固定值 */
+  getDir: () => string;
   retentionDays: number;
   toStdout: boolean;
 }): LogDestination {
-  mkdirSync(options.dir, { recursive: true });
-  const removed = pruneLogs(options.dir, options.retentionDays);
+  mkdirSync(options.getDir(), { recursive: true });
+  const removed = pruneLogs(options.getDir(), options.retentionDays);
   let currentFile = '';
   let announced = false;
 
   return {
     write(chunk: string): void {
-      const file = dailyLogFile(options.dir);
+      const dir = options.getDir();
+      const file = dailyLogFile(dir);
       if (file !== currentFile) {
         currentFile = file;
         announced = false;
       }
       try {
+        mkdirSync(dir, { recursive: true });
         appendFileSync(file, chunk.endsWith('\n') ? chunk : `${chunk}\n`, 'utf8');
         if (!announced && removed > 0) {
           appendFileSync(

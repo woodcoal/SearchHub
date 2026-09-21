@@ -137,8 +137,43 @@ export interface ApiKeyRecord {
   revoked: boolean;
 }
 
+export interface SystemSettings {
+  homeDir: string;
+  dataDir: string;
+  dataFile: string;
+  logDir: string;
+  logRetentionDays: number;
+  settingsFile: string;
+  passwordSource: 'ui' | 'env';
+  passwordUpdatedAt: string | null;
+}
+
+export interface MigrationResult {
+  dataDir: string;
+  dataFile: string;
+  logDir: string;
+  previousDataFile: string;
+  previousLogDir: string;
+  movedFiles: string[];
+  restarted: boolean;
+}
+
 export const api = {
   state: () => request<StateSnapshot>('/api/admin/state'),
+
+  settings: () => request<SystemSettings>('/api/admin/settings'),
+
+  updatePassword: (currentPassword: string, newPassword: string) =>
+    request<{ ok: boolean; updatedAt: string | null }>('/api/admin/password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+
+  migrateDataDir: (dir: string) =>
+    request<MigrationResult>('/api/admin/data-dir', {
+      method: 'POST',
+      body: JSON.stringify({ dir }),
+    }),
 
   login: (password: string) =>
     request<{ token: string; expiresAt: number }>(

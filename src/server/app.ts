@@ -52,6 +52,13 @@ const KeyPatchSchema = z.object({
 
 const LoginSchema = z.object({ password: z.string().min(1, '请输入密码') });
 
+const PasswordSchema = z.object({
+  currentPassword: z.string().min(1, '请输入当前密码'),
+  newPassword: z.string().min(6, '新密码至少 6 位'),
+});
+
+const DataDirSchema = z.object({ dir: z.string().min(1, '请输入目录路径') });
+
 const NewApiKeySchema = z.object({ name: z.string().min(1, '请输入名称').max(64) });
 
 const MIME: Record<string, string> = {
@@ -68,7 +75,7 @@ const MIME: Record<string, string> = {
 export async function buildServer(hub: SearchHub, config: AppConfig): Promise<FastifyInstance> {
   // 日志按天写入 <homeDir>/log/searchhub-YYYY-MM-DD.log，启动时清理过期文件
   const destination = createDailyLogDestination({
-    dir: config.logDir,
+    getDir: () => config.logDir,
     retentionDays: config.logRetentionDays,
     toStdout: config.logToStdout,
   });
@@ -89,9 +96,12 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
     } as FastifyServerOptions['logger'],
   });
 
-  const passwordHash = hashPassword(config.adminPassword);
+  // 密码优先级：界面设置（settings.json） > 环境变量 > 启动时随机生成
+  let passwordHash =
+    config.settings.adminPasswordHash ?? hashPassword(config.adminPassword);
+  const secretBase = config.secret ?? 'searchhub-dev-secret';
   // 会话密钥混入密码哈希：修改密码后所有旧令牌立即失效
-  const sessions = new SessionTokens(`${config.secret ?? 'searchhub-dev-secret'}:${passwordHash}`);
+  let sessions = new SessionTokens(`${secretBase}:${passwordHash}`);
 
   /** 管理后台登录：校验密码，签发会话令牌 */
   app.post('/api/admin/login', async (request, reply) => {
@@ -164,6 +174,44 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
       admin.addHook('preHandler', adminGuard);
 
       admin.get('/state', async () => hub.state());
+
+      admin.get('/settings', async () => ({
+        homeDir: config.homeDir,
+        dataDir: config.dataDir,
+        dataFile: config.dataFile,
+        logDir: config.logDir,
+        logRetentionDays: config.logRetentionDays,
+        settingsFile: config.settings.path,
+        passwordSource: config.settings.adminPasswordHash ? 'ui' : 'env',
+        passwordUpdatedAt: config.settings.adminPasswordUpdatedAt,
+      }));
+
+      admin.post('/password', async (request: any, reply: any) => {
+        const parsed = PasswordSchema.safeParse(request.body);
+        if (!parsed.success) {
+          return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+        }
+        if (!verifyPassword(parsed.data.currentPassword, passwordHash)) {
+          return reply.code(401).send({ error: 'unauthorized', message: '当前密码不正确' });
+        }
+        passwordHash = hashPassword(parsed.data.newPassword);
+        config.settings.setAdminPassword(passwordHash);
+        // 重建会话签发器，使所有旧令牌立即失效
+        sessions = new SessionTokens(`${secretBase}:${passwordHash}`);
+        return { ok: true, updatedAt: config.settings.adminPasswordUpdatedAt };
+      });
+
+      admin.post('/data-dir', async (request: any, reply: any) => {
+        const parsed = DataDirSchema.safeParse(request.body);
+        if (!parsed.success) {
+          return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+        }
+        try {
+          return hub.setDataDir(parsed.data.dir);
+        } catch (error) {
+          return reply.code(400).send({ error: 'bad_request', message: (error as Error).message });
+        }
+      });
 
       /** 管理后台调试用搜索：走同一套编排逻辑，但不需要 API Key */
       admin.post('/search', async (request: any, reply: any) =>

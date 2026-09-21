@@ -90,7 +90,7 @@ export class Store {
   private data: StoreData;
 
   constructor(
-    private readonly file: string,
+    private file: string,
     private readonly secretBox: SecretBox,
     seed: Record<string, string[]> = {},
   ) {
@@ -154,6 +154,23 @@ export class Store {
 
   private save(): void {
     this.persist();
+  }
+
+  /**
+   * 迁移到新的数据文件：把当前内存中的数据完整写入新位置，
+   * 目标已存在时先备份为 .bak-<时间戳>，随后所有写入走新文件。
+   */
+  retarget(newFile: string): string {
+    const target = resolve(newFile);
+    mkdirSync(dirname(target), { recursive: true });
+    if (existsSync(target) && resolve(target) !== resolve(this.file)) {
+      renameSync(target, `${target}.bak-${Date.now()}`);
+    }
+    const tmp = `${target}.tmp`;
+    writeFileSync(tmp, JSON.stringify(this.data, null, 2), 'utf8');
+    renameSync(tmp, target);
+    this.file = target;
+    return target;
   }
 
   listProviders(): ProviderSettings[] {

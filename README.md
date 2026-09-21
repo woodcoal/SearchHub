@@ -130,6 +130,37 @@ searchhub start --home D:/searchhub-data
 
 敏感信息（API Key、管理令牌、密钥原文、登录密码）在日志中统一做了 redact 脱敏。
 
+## 系统设置
+
+管理后台「系统设置」页可以改两项系统级配置，它们保存在 **独立于数据文件** 的
+`~/.search-hub/settings.json` 里——这样即使数据目录被迁移走，系统也知道数据在哪、密码是什么。
+
+```
+~/.search-hub/
+├── settings.json     系统设置（数据目录 + 后台密码哈希）
+├── store.json        业务数据（随 dataDir 迁移）
+└── log/              日志（随 dataDir 迁移）
+```
+
+### 后台密码
+
+- 优先级：**界面设置 > 环境变量 `SEARCHHUB_ADMIN_PASSWORD` > 启动随机生成**
+- 只保存 scrypt 哈希；修改后**所有已登录会话立即失效**，需要重新登录
+- 一旦在界面设置过密码，环境变量里的密码不再生效（除非清空 settings.json 中的 `adminPasswordHash`）
+- 忘记密码时：删掉 `settings.json` 里的 `adminPasswordHash` 并重启，回到环境变量密码
+
+### 数据目录迁移
+
+在界面填入新目录点「迁移」即可，流程是：
+
+1. 创建新目录
+2. 把当前内存中的完整数据写入 `<新目录>/store.json`（若目标已存在，先备份为 `store.json.bak-<时间戳>`）
+3. 搬移历史日志文件（**当天正在写入的日志留在原处**，避免 Windows 文件占用）
+4. 写入 `settings.json`，日志立即切换到 `<新目录>/log`
+5. 旧目录的文件**全部保留，不做删除**
+
+对应接口：`GET /api/admin/settings`、`POST /api/admin/password`、`POST /api/admin/data-dir`。
+
 ## 认证体系
 
 ### 1. 管理后台：密码登录
@@ -157,6 +188,7 @@ searchhub start --home D:/searchhub-data
 |---|---|
 | `PORT` / `HOST` | 服务监听地址，默认 `8787` / `0.0.0.0` |
 | `SEARCHHUB_HOME` | 根目录，默认 `~/.search-hub` |
+| `SEARCHHUB_SETTINGS_FILE` | 系统设置文件，默认 `<home>/settings.json` |
 | `DATA_FILE` | 供应商配置、供应商密钥密文、API Key 哈希的存储文件，默认 `<home>/store.json` |
 | `SEARCHHUB_LOG_DIR` | 日志目录，默认 `<home>/log` |
 | `SEARCHHUB_LOG_RETENTION_DAYS` | 日志保留天数，默认 `14`；设为 `0` 永久保留 |

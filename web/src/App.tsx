@@ -8,8 +8,17 @@ import Login from './components/Login';
 import Overview from './components/Overview';
 import Playground from './components/Playground';
 import ProvidersPanel from './components/ProvidersPanel';
+import SettingsPanel from './components/SettingsPanel';
 
-type TabId = 'overview' | 'keys' | 'providers' | 'access' | 'playground' | 'api-docs' | 'guide';
+type TabId =
+  | 'overview'
+  | 'keys'
+  | 'providers'
+  | 'access'
+  | 'playground'
+  | 'settings'
+  | 'api-docs'
+  | 'guide';
 type Theme = 'dark' | 'light';
 
 const TABS: Array<{ id: TabId; label: string }> = [
@@ -18,6 +27,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'providers', label: '供应商配置' },
   { id: 'access', label: 'API 授权' },
   { id: 'playground', label: '搜索调试' },
+  { id: 'settings', label: '系统设置' },
   { id: 'api-docs', label: 'API 接口' },
   { id: 'guide', label: '使用说明' },
 ];
@@ -132,6 +142,8 @@ export default function App() {
         <ApiKeysPanel />
       ) : tab === 'playground' ? (
         <Playground state={state} />
+      ) : tab === 'settings' ? (
+        <SettingsPanel />
       ) : tab === 'api-docs' ? (
         <ApiDocs />
       ) : (
