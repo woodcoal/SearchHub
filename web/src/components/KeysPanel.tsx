@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { api, type KeyView, type ProviderView, type StateSnapshot } from '../api';
 import Icon, { type IconName } from './Icon';
+import { toastErr, toastOk } from './Toast';
 
 const STATE_TONE: Record<string, string> = { active: 'ok', cooling: 'warn', quarantined: 'danger' };
 const STATE_LABEL: Record<string, string> = {
@@ -8,6 +9,13 @@ const STATE_LABEL: Record<string, string> = {
   cooling: '冷却中',
   quarantined: '已隔离',
 };
+
+interface TestResult {
+  ok: boolean;
+  text: string;
+  tookMs: number;
+  results?: number;
+}
 
 /** 折叠式操作菜单：默认只显示图标，避免操作栏过长 */
 function ActionMenu({ items }: { items: Array<{ key: string; icon: IconName; label: string; danger?: boolean; onPick: () => void }> }) {
@@ -45,18 +53,41 @@ export default function KeysPanel({
   onRefresh: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState('');
-  const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
+  /** 每个密钥最近一次的测试结果，直接显示在按钮旁边 */
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
 
   async function run(action: string, fn: () => Promise<unknown>, success?: string) {
     setBusy(action);
-    setNotice('');
     try {
       await fn();
-      if (success) setNotice(success);
+      if (success) toastOk(success);
       await onRefresh();
     } catch (err) {
-      setNotice((err as Error).message);
+      toastErr((err as Error).message);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function testKey(providerId: string, key: KeyView) {
+    setBusy(`test-${key.id}`);
+    try {
+      const result = await api.testKey(providerId, key.id);
+      setTestResults((prev) => ({
+        ...prev,
+        [key.id]: {
+          ok: result.ok,
+          text: result.message,
+          tookMs: result.tookMs,
+          results: result.results,
+        },
+      }));
+      if (result.ok) toastOk(`${key.label}：${result.message}（${result.tookMs}ms）`);
+      else toastErr(`${key.label}：${result.message}`);
+      await onRefresh();
+    } catch (err) {
+      toastErr((err as Error).message);
     } finally {
       setBusy('');
     }
@@ -64,7 +95,6 @@ export default function KeysPanel({
 
   return (
     <>
-      {notice && <div className="notice">{notice}</div>}
       {state.providers.map((provider) => (
         <section className="card" key={provider.id}>
           <div className="spread">
@@ -114,11 +144,13 @@ export default function KeysPanel({
                     editing={editing === key.id}
                     onToggleEdit={() => setEditing(editing === key.id ? null : key.id)}
                     run={run}
-                    onNotice={setNotice}
+                    testResult={testResults[key.id]}
+                    onTest={() => void testKey(provider.id, key)}
+                    onError={toastErr}
                     onRefresh={onRefresh}
                     onSaved={async (message) => {
                       setEditing(null);
-                      setNotice(message);
+                      toastOk(message);
                       await onRefresh();
                     }}
                   />
@@ -127,7 +159,7 @@ export default function KeysPanel({
             </table>
           )}
 
-          <AddKeyForm provider={provider} onRefresh={onRefresh} onNotice={setNotice} />
+          <AddKeyForm provider={provider} onRefresh={onRefresh} />
         </section>
       ))}
     </>
@@ -141,7 +173,9 @@ function KeyRow({
   editing,
   onToggleEdit,
   run,
-  onNotice,
+  testResult,
+  onTest,
+  onError,
   onSaved,
 }: {
   providerId: string;
@@ -150,7 +184,9 @@ function KeyRow({
   editing: boolean;
   onToggleEdit: () => void;
   run: (action: string, fn: () => Promise<unknown>, success?: string) => Promise<void>;
-  onNotice: (message: string) => void;
+  testResult?: TestResult;
+  onTest: () => void;
+  onError: (message: string) => void;
   onRefresh: () => Promise<void>;
   onSaved: (message: string) => Promise<void>;
 }) {
@@ -190,17 +226,23 @@ function KeyRow({
         </td>
         <td data-label="操作" className="col-actions">
           <div className="row actions">
+            {testResult && (
+              <span
+                className={`test-result ${testResult.ok ? 'ok' : 'err'}`}
+                title={`${testResult.text}（${testResult.tookMs}ms）`}
+              >
+                <Icon name={testResult.ok ? 'check' : 'close'} size={13} />
+                {testResult.ok
+                  ? `通过 · ${testResult.results ?? 0} 条 · ${(testResult.tookMs / 1000).toFixed(1)}s`
+                  : testResult.text}
+              </span>
+            )}
             <button
               className="btn sm icon-btn"
               title="测试连通性"
               aria-label="测试"
               disabled={busy === `test-${view.id}`}
-              onClick={() =>
-                void run(`test-${view.id}`, async () => {
-                  const result = await api.testKey(providerId, view.id);
-                  onNotice(`${view.label}: ${result.message}（${result.tookMs}ms）`);
-                })
-              }
+              onClick={onTest}
             >
               <Icon name="play" />
             </button>
@@ -270,7 +312,7 @@ function KeyRow({
               view={view}
               onCancel={onToggleEdit}
               onSaved={onSaved}
-              onError={onNotice}
+              onError={onError}
             />
           </td>
         </tr>
@@ -402,11 +444,9 @@ function EditKeyForm({
 function AddKeyForm({
   provider,
   onRefresh,
-  onNotice,
 }: {
   provider: ProviderView;
   onRefresh: () => Promise<void>;
-  onNotice: (message: string) => void;
 }) {
   const [label, setLabel] = useState('');
   const [value, setValue] = useState('');
@@ -418,7 +458,7 @@ function AddKeyForm({
 
   async function submit() {
     if (!value.trim()) {
-      onNotice('请填写密钥内容');
+      toastErr('请填写密钥内容');
       return;
     }
     setSaving(true);
@@ -438,10 +478,10 @@ function AddKeyForm({
       setQuota('');
       setMonthly('');
       setTotal('');
-      onNotice(`已添加密钥到 ${provider.displayName}`);
+      toastOk(`已添加密钥到 ${provider.displayName}`);
       await onRefresh();
     } catch (err) {
-      onNotice((err as Error).message);
+      toastErr((err as Error).message);
     } finally {
       setSaving(false);
     }

@@ -12,6 +12,7 @@ import Overview from './components/Overview';
 import Playground from './components/Playground';
 import ProvidersPanel from './components/ProvidersPanel';
 import SettingsPanel from './components/SettingsPanel';
+import { Toaster } from './components/Toast';
 
 type TabId =
   | 'overview'
@@ -88,6 +89,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <Toaster />
       <header className="header">
         <div className="brand">
           <Logo size={42} />

@@ -592,8 +592,28 @@ tr:last-child td {
 /* ==================== logo / 图标 ==================== */
 .logo-svg {
   display: block;
-  border-radius: 12px;
   flex: 0 0 auto;
+  /* 描边与镜片底色跟随主题，避免深色背景下深蓝描边不可见 */
+  --logo-ink: #0e2a4a;
+  --logo-lens: #ffffff;
+}
+
+:root[data-theme='dark'] .logo-svg {
+  --logo-ink: #dbe8ff;
+  --logo-lens: #121c34;
+}
+
+.logo-ink-stroke {
+  stroke: var(--logo-ink);
+}
+
+.logo-hollow {
+  fill: var(--logo-lens);
+  stroke: var(--logo-ink);
+}
+
+.logo-lens {
+  fill: var(--logo-lens);
 }
 
 .brand-text h1 {
@@ -633,6 +653,112 @@ tr:last-child td {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* ==================== 浮层通知 ==================== */
+.toaster {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(400px, calc(100vw - 36px));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4);
+  animation: toast-in 0.18s ease-out;
+}
+
+.toast.ok {
+  border-color: rgba(52, 211, 153, 0.5);
+  background: color-mix(in srgb, var(--panel) 88%, #34d399 12%);
+}
+
+.toast.err {
+  border-color: rgba(248, 113, 113, 0.5);
+  background: color-mix(in srgb, var(--panel) 88%, #f87171 12%);
+}
+
+.toast.ok > svg {
+  color: var(--ok);
+  margin-top: 2px;
+}
+
+.toast.err > svg {
+  color: var(--danger);
+  margin-top: 2px;
+}
+
+.toast-text {
+  flex: 1 1 auto;
+  word-break: break-word;
+}
+
+.toast-close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+}
+
+.toast-close:hover {
+  color: var(--text);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 测试结果直接显示在按钮旁 */
+.test-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 220px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid var(--border);
+}
+
+.test-result.ok {
+  color: var(--ok);
+  border-color: rgba(52, 211, 153, 0.4);
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.test-result.err {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.1);
 }
 
 /* ==================== 折叠操作菜单 ==================== */
@@ -952,6 +1078,22 @@ tr:last-child td {
 
   .log-message {
     white-space: normal;
+  }
+
+  .toaster {
+    top: auto;
+    bottom: 14px;
+    left: 12px;
+    right: 12px;
+    max-width: none;
+  }
+
+  .toast {
+    animation: none;
+  }
+
+  .test-result {
+    max-width: 100%;
   }
 }
 

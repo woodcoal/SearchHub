@@ -1,23 +1,38 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#2dd4bf" />
-      <stop offset="55%" stop-color="#5b8cff" />
-      <stop offset="100%" stop-color="#8b7cff" />
+    <linearGradient id="sh-node" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2D9CDB" />
+      <stop offset="100%" stop-color="#3FE0D0" />
     </linearGradient>
   </defs>
-  <rect x="2" y="2" width="60" height="60" rx="17" fill="url(#g)" />
-  <g stroke="#08152f" stroke-width="1.8" opacity="0.45">
-    <path d="M28 19v9.5" />
-    <path d="M19.5 37.5 26 30.5" />
-    <path d="M21 19.5 14 25" />
-    <path d="M37 21l8-5.5" />
+
+  <g fill="none" stroke="#0E2A4A" stroke-width="2.4">
+    <circle cx="32" cy="32" r="24" />
   </g>
-  <circle cx="28" cy="30" r="11.5" fill="url(#g)" stroke="#08152f" stroke-width="3.2" />
-  <path d="M36.6 38.6 46.5 48.5" stroke="#08152f" stroke-width="4.6" stroke-linecap="round" />
-  <g fill="#08152f">
-    <circle cx="21" cy="17.5" r="3.1" />
-    <circle cx="15.5" cy="27" r="2.6" />
-    <circle cx="47" cy="14" r="2.6" />
+  <g fill="none" stroke="#0E2A4A" stroke-width="2">
+    <path d="M47.8 32h3.8" />
+    <path d="M43.17 43.17l2.69 2.69" />
+    <path d="M32 47.8v3.8" />
+    <path d="M20.83 43.17l-2.69 2.69" />
+    <path d="M16.2 32h-3.8" />
+    <path d="M20.83 20.83l-2.69-2.69" />
+    <path d="M32 16.2v-3.8" />
+    <path d="M43.17 20.83l2.69-2.69" />
   </g>
+
+  <g stroke-width="1.8">
+    <circle cx="32" cy="8" r="3.4" fill="#3FE0D0" stroke="#0E2A4A" />
+    <circle cx="48.97" cy="15.03" r="3" fill="#FFFFFF" stroke="#0E2A4A" />
+    <circle cx="56" cy="32" r="3.4" fill="url(#sh-node)" stroke="#0E2A4A" />
+    <circle cx="48.97" cy="48.97" r="3" fill="#FFFFFF" stroke="#2D9CDB" stroke-width="2" />
+    <circle cx="32" cy="56" r="3.4" fill="#3FE0D0" stroke="#0E2A4A" />
+    <circle cx="15.03" cy="48.97" r="3.4" fill="#A8E063" stroke="#0E2A4A" />
+    <circle cx="8" cy="32" r="3.4" fill="#A8E063" stroke="#0E2A4A" />
+    <circle cx="15.03" cy="15.03" r="3.4" fill="#4FD8E8" stroke="#0E2A4A" />
+  </g>
+
+  <path d="M23 40.2 15.6 47.6" stroke="#0E2A4A" stroke-width="7" stroke-linecap="round" fill="none" />
+
+  <circle cx="32" cy="31" r="12.6" fill="#FFFFFF" stroke="#0E2A4A" stroke-width="4.2" />
+  <path d="M25.4 25.6a9 9 0 0 1 5-3.4" fill="none" stroke="#BFE0FF" stroke-width="2.2" stroke-linecap="round" />
 </svg>
