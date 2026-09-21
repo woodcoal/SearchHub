@@ -1,0 +1,34 @@
+services:
+  searchhub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: searchhub:local
+    restart: unless-stopped
+    ports:
+      - "${SEARCHHUB_PORT:-8787}:8787"
+    environment:
+      NODE_ENV: production
+      PORT: 8787
+      HOST: 0.0.0.0
+      SEARCHHUB_HOME: /data
+      SEARCHHUB_ADMIN_PASSWORD: ${SEARCHHUB_ADMIN_PASSWORD:?set SEARCHHUB_ADMIN_PASSWORD in .env}
+      SEARCHHUB_SECRET: ${SEARCHHUB_SECRET:?set SEARCHHUB_SECRET in .env}
+      SEARCHHUB_API_TOKEN: ${SEARCHHUB_API_TOKEN:-}
+      SEARCHHUB_LOG_RETENTION_DAYS: ${SEARCHHUB_LOG_RETENTION_DAYS:-14}
+      SEARCHHUB_LOG_STDOUT: ${SEARCHHUB_LOG_STDOUT:-true}
+      SERPER_KEYS: ${SERPER_KEYS:-}
+      TAVILY_KEYS: ${TAVILY_KEYS:-}
+      EXA_KEYS: ${EXA_KEYS:-}
+      ANYSEARCH_KEYS: ${ANYSEARCH_KEYS:-}
+    volumes:
+      - searchhub-data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  searchhub-data:

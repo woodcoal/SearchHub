@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log*
+dist
+web/dist
+.git
+.gitignore
+.env
+.env.*
+!/.env.example
+data
+*.log
+*.err
+.DS_Store
