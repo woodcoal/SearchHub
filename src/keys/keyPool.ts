@@ -1,4 +1,9 @@
-import { nextUtcMidnight, utcDayStamp } from '../core/date.js';
+import {
+  nextUtcMidnight,
+  nextUtcMonthStart,
+  utcDayStamp,
+  utcMonthStamp,
+} from '../core/date.js';
 import type { ProviderError } from '../core/errors.js';
 
 export type KeyState = 'active' | 'cooling' | 'quarantined';
@@ -10,6 +15,8 @@ export interface ManagedKey {
   enabled: boolean;
   qps: number;
   dailyQuota: number | null;
+  monthlyQuota: number | null;
+  totalQuota: number | null;
 }
 
 export interface KeyRuntimeView {
@@ -20,7 +27,11 @@ export interface KeyRuntimeView {
   cooldownUntil: number | null;
   reason: string | null;
   usedToday: number;
+  usedMonth: number;
+  usedTotal: number;
   dailyQuota: number | null;
+  monthlyQuota: number | null;
+  totalQuota: number | null;
   qps: number;
   consecutiveFailures: number;
   lastError: string | null;
@@ -34,6 +45,10 @@ export interface KeyPoolOptions {
   /** 被限流但没有 Retry-After 时的默认冷却时长 */
   rateLimitCooldownMs: number;
 }
+
+export const REASON_DAILY_QUOTA = '日配额耗尽';
+export const REASON_MONTHLY_QUOTA = '月配额耗尽';
+export const REASON_TOTAL_QUOTA = '总配额耗尽';
 
 export class NoKeyAvailableError extends Error {
   readonly code = 'no_key_available';
@@ -49,11 +64,16 @@ interface Runtime {
   enabled: boolean;
   qps: number;
   dailyQuota: number | null;
+  monthlyQuota: number | null;
+  totalQuota: number | null;
   state: KeyState;
   cooldownUntil: number | null;
   reason: string | null;
   usedToday: number;
+  usedMonth: number;
+  usedTotal: number;
   dayStamp: string;
+  monthStamp: string;
   tokens: number;
   lastRefillAt: number;
   consecutiveFailures: number;
@@ -63,8 +83,8 @@ interface Runtime {
 }
 
 /**
- * 单个供应商的密钥池：轮换选取 + QPS 令牌桶 + 日配额 + 冷却/隔离状态机。
- * 冷却与配额属于运行时状态，进程重启后清零（多实例部署需换 Redis，见 README）。
+ * 单个供应商的密钥池：轮询选取 + QPS 令牌桶 + 日/月/总三类配额 + 冷却状态机。
+ * 用量与冷却属于运行时状态，进程重启后清零（多实例部署需换 Redis，见 README）。
  */
 export class KeyPool {
   private readonly runtime = new Map<string, Runtime>();
@@ -92,11 +112,16 @@ export class KeyPool {
           enabled: key.enabled,
           qps: key.qps,
           dailyQuota: key.dailyQuota,
+          monthlyQuota: key.monthlyQuota,
+          totalQuota: key.totalQuota,
           state: 'active',
           cooldownUntil: null,
           reason: null,
           usedToday: 0,
+          usedMonth: 0,
+          usedTotal: 0,
           dayStamp: utcDayStamp(),
+          monthStamp: utcMonthStamp(),
           tokens: key.qps,
           lastRefillAt: Date.now(),
           consecutiveFailures: 0,
@@ -110,6 +135,8 @@ export class KeyPool {
       existing.enabled = key.enabled;
       existing.qps = key.qps;
       existing.dailyQuota = key.dailyQuota;
+      existing.monthlyQuota = key.monthlyQuota;
+      existing.totalQuota = key.totalQuota;
     }
 
     for (const id of [...this.runtime.keys()]) {
@@ -143,7 +170,7 @@ export class KeyPool {
 
       this.cursor = (index + 1) % candidates.length;
       entry.lastUsedAt = now;
-      entry.usedToday += 1;
+      this.consume(entry);
 
       return {
         id,
@@ -152,6 +179,8 @@ export class KeyPool {
         enabled: entry.enabled,
         qps: entry.qps,
         dailyQuota: entry.dailyQuota,
+        monthlyQuota: entry.monthlyQuota,
+        totalQuota: entry.totalQuota,
       };
     }
 
@@ -164,7 +193,7 @@ export class KeyPool {
     if (!entry) return undefined;
     this.refill(entry, Date.now());
     entry.lastUsedAt = Date.now();
-    entry.usedToday += 1;
+    this.consume(entry);
     return {
       id,
       label: entry.label,
@@ -172,6 +201,8 @@ export class KeyPool {
       enabled: entry.enabled,
       qps: entry.qps,
       dailyQuota: entry.dailyQuota,
+      monthlyQuota: entry.monthlyQuota,
+      totalQuota: entry.totalQuota,
     };
   }
 
@@ -206,12 +237,25 @@ export class KeyPool {
       case 'keyQuotaExhausted':
         entry.state = 'quarantined';
         entry.cooldownUntil = nextUtcMidnight(now);
-        entry.reason = '配额耗尽';
+        entry.reason = REASON_DAILY_QUOTA;
         break;
       default:
         // providerUnavailable / badRequest 不是密钥的锅，不惩罚密钥
         break;
     }
+  }
+
+  /** 重置该密钥的日/月/总用量（例如充值或升级套餐后） */
+  resetUsage(id: string): void {
+    const entry = this.runtime.get(id);
+    if (!entry) return;
+    const now = Date.now();
+    entry.usedToday = 0;
+    entry.usedMonth = 0;
+    entry.usedTotal = 0;
+    entry.dayStamp = utcDayStamp(now);
+    entry.monthStamp = utcMonthStamp(now);
+    this.resetKey(id);
   }
 
   /** 界面上的「重新启用」：立即解除冷却/隔离 */
@@ -239,7 +283,11 @@ export class KeyPool {
         cooldownUntil: entry.cooldownUntil,
         reason: entry.reason,
         usedToday: entry.usedToday,
+        usedMonth: entry.usedMonth,
+        usedTotal: entry.usedTotal,
         dailyQuota: entry.dailyQuota,
+        monthlyQuota: entry.monthlyQuota,
+        totalQuota: entry.totalQuota,
         qps: entry.qps,
         consecutiveFailures: entry.consecutiveFailures,
         lastError: entry.lastError,
@@ -249,11 +297,29 @@ export class KeyPool {
     });
   }
 
+  private consume(entry: Runtime): void {
+    entry.usedToday += 1;
+    entry.usedMonth += 1;
+    entry.usedTotal += 1;
+  }
+
   private refresh(entry: Runtime, now: number): void {
-    if (entry.dayStamp !== utcDayStamp(now)) {
-      entry.dayStamp = utcDayStamp(now);
+    const dayStamp = utcDayStamp(now);
+    if (entry.dayStamp !== dayStamp) {
+      entry.dayStamp = dayStamp;
       entry.usedToday = 0;
-      if (entry.reason === '配额耗尽') {
+      if (entry.reason === REASON_DAILY_QUOTA) {
+        entry.state = 'active';
+        entry.cooldownUntil = null;
+        entry.reason = null;
+      }
+    }
+
+    const monthStamp = utcMonthStamp(now);
+    if (entry.monthStamp !== monthStamp) {
+      entry.monthStamp = monthStamp;
+      entry.usedMonth = 0;
+      if (entry.reason === REASON_MONTHLY_QUOTA) {
         entry.state = 'active';
         entry.cooldownUntil = null;
         entry.reason = null;
@@ -267,14 +333,25 @@ export class KeyPool {
       entry.consecutiveFailures = 0;
     }
 
-    if (
-      entry.state === 'active' &&
-      entry.dailyQuota !== null &&
-      entry.usedToday >= entry.dailyQuota
-    ) {
+    if (entry.state !== 'active') return;
+
+    if (entry.dailyQuota !== null && entry.usedToday >= entry.dailyQuota) {
       entry.state = 'quarantined';
       entry.cooldownUntil = nextUtcMidnight(now);
-      entry.reason = '配额耗尽';
+      entry.reason = REASON_DAILY_QUOTA;
+      return;
+    }
+    if (entry.monthlyQuota !== null && entry.usedMonth >= entry.monthlyQuota) {
+      entry.state = 'quarantined';
+      entry.cooldownUntil = nextUtcMonthStart(now);
+      entry.reason = REASON_MONTHLY_QUOTA;
+      return;
+    }
+    if (entry.totalQuota !== null && entry.usedTotal >= entry.totalQuota) {
+      // 总配额不随时间恢复，只能手动调整配额或重新启用
+      entry.state = 'quarantined';
+      entry.cooldownUntil = null;
+      entry.reason = REASON_TOTAL_QUOTA;
     }
   }
 

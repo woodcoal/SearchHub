@@ -33,20 +33,26 @@ const ProviderPatchSchema = z.object({
   cooldownMs: z.number().int().min(1000).max(3_600_000).optional(),
 });
 
+const quotaField = z.number().int().min(1).nullable().optional();
+
 const NewKeySchema = z.object({
   providerId: z.string().min(1),
   label: z.string().max(64).optional(),
   value: z.string().min(1, '密钥不能为空'),
   enabled: z.boolean().optional(),
   qps: z.number().min(0.1).max(100).optional(),
-  dailyQuota: z.number().int().min(1).nullable().optional(),
+  dailyQuota: quotaField,
+  monthlyQuota: quotaField,
+  totalQuota: quotaField,
 });
 
 const KeyPatchSchema = z.object({
   label: z.string().max(64).optional(),
   enabled: z.boolean().optional(),
   qps: z.number().min(0.1).max(100).optional(),
-  dailyQuota: z.number().int().min(1).nullable().optional(),
+  dailyQuota: quotaField,
+  monthlyQuota: quotaField,
+  totalQuota: quotaField,
   value: z.string().min(1).optional(),
 });
 
@@ -272,6 +278,12 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
       admin.post('/keys/:providerId/:keyId/reset', async (request: any) => {
         const { providerId, keyId } = request.params as { providerId: string; keyId: string };
         hub.resetKey(providerId, keyId);
+        return { ok: true };
+      });
+
+      admin.post('/keys/:providerId/:keyId/reset-usage', async (request: any) => {
+        const { providerId, keyId } = request.params as { providerId: string; keyId: string };
+        hub.resetKeyUsage(providerId, keyId);
         return { ok: true };
       });
 

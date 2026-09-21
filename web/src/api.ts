@@ -19,7 +19,11 @@ export interface KeyView {
   cooldownUntil: number | null;
   reason: string | null;
   usedToday: number;
+  usedMonth: number;
+  usedTotal: number;
   dailyQuota: number | null;
+  monthlyQuota: number | null;
+  totalQuota: number | null;
   qps: number;
   consecutiveFailures: number;
   lastError: string | null;
@@ -210,7 +214,15 @@ export const api = {
       body: JSON.stringify(patch),
     }),
 
-  addKey: (input: { providerId: string; label?: string; value: string; qps?: number; dailyQuota?: number | null }) =>
+  addKey: (input: {
+    providerId: string;
+    label?: string;
+    value: string;
+    qps?: number;
+    dailyQuota?: number | null;
+    monthlyQuota?: number | null;
+    totalQuota?: number | null;
+  }) =>
     request<{ key: { id: string; label: string } }>('/api/admin/keys', {
       method: 'POST',
       body: JSON.stringify(input),
@@ -219,7 +231,15 @@ export const api = {
   patchKey: (
     providerId: string,
     keyId: string,
-    patch: { label?: string; enabled?: boolean; qps?: number; dailyQuota?: number | null; value?: string },
+    patch: {
+      label?: string;
+      enabled?: boolean;
+      qps?: number;
+      dailyQuota?: number | null;
+      monthlyQuota?: number | null;
+      totalQuota?: number | null;
+      value?: string;
+    },
   ) =>
     request<{ key: unknown }>(`/api/admin/keys/${providerId}/${keyId}`, {
       method: 'PATCH',
@@ -231,6 +251,11 @@ export const api = {
 
   resetKey: (providerId: string, keyId: string) =>
     request<{ ok: boolean }>(`/api/admin/keys/${providerId}/${keyId}/reset`, { method: 'POST' }),
+
+  resetKeyUsage: (providerId: string, keyId: string) =>
+    request<{ ok: boolean }>(`/api/admin/keys/${providerId}/${keyId}/reset-usage`, {
+      method: 'POST',
+    }),
 
   testKey: (providerId: string, keyId: string) =>
     request<{ ok: boolean; message: string; tookMs: number; results?: number }>(

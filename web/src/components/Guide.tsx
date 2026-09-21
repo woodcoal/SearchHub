@@ -1,5 +1,14 @@
 import CodeBlock from './CodeBlock';
 
+const MCP_CONFIG = `{
+  "mcpServers": {
+    "searchhub": {
+      "command": "searchhub",
+      "args": ["mcp"]
+    }
+  }
+}`;
+
 const CLI_EXAMPLE = `# 启动服务（默认 http://localhost:8787）
 searchhub start
 
@@ -24,7 +33,8 @@ export default function Guide() {
             <div>
               <b>添加供应商密钥</b>
               <p>
-                进入「密钥管理」，为 Serper 和 Exa 各添加至少一把密钥。同一供应商可以加多把——
+                进入「密钥管理」，为 Serper / Tavily / Exa / AnySearch 各添加至少一把密钥。
+                同一供应商可以加多把——
                 一把失效会自动换下一把，这是容灾的第一层。加完点「测试」确认连通。
               </p>
             </div>
@@ -114,8 +124,11 @@ export default function Guide() {
               <td>
                 <span className="badge danger">已隔离</span>
               </td>
-              <td>密钥无效（401/403）或日配额耗尽</td>
-              <td>无效：6 小时后自动解除；配额：次日 UTC 0 点；两者都能手动「解除冷却」</td>
+              <td>密钥无效（401/403），或日 / 月 / 总配额耗尽</td>
+              <td>
+                无效：6 小时后自动解除；日配额：次日 UTC 0 点；月配额：次月 1 号 UTC 0 点；
+                总配额不会自动恢复，需要调高配额，或点「重置用量」清零计数
+              </td>
             </tr>
             <tr>
               <td>
@@ -127,8 +140,9 @@ export default function Guide() {
           </tbody>
         </table>
         <div className="notice" style={{ marginTop: 14, marginBottom: 0 }}>
-          QPS 是每个密钥每秒的请求上限（令牌桶），日配额是当天累计调用上限。两者都在 UTC 0 点重置，
-          界面上的「今日用量」会同步归零。
+          三类配额可以同时设置，也可以只设其中一种，留空表示不限：
+          <b>日配额</b>每天 UTC 0 点重置，<b>月配额</b>每月 1 号 UTC 0 点重置，
+          <b>总配额</b>是累计上限、不随时间恢复。QPS 是每秒请求上限（令牌桶），与配额相互独立。
         </div>
       </section>
 
@@ -204,6 +218,34 @@ export default function Guide() {
             </tr>
           </tbody>
         </table>
+      </section>
+
+      <section className="card">
+        <h3>MCP 接入（给 AI 客户端用）</h3>
+        <p className="sub">
+          内置 MCP 服务（stdio 传输），Claude Desktop / Cursor 等客户端可直接把统一搜索当作工具调用，
+          无需关心密钥轮换与供应商切换
+        </p>
+        <table>
+          <tbody>
+            <tr>
+              <td style={{ width: 170 }} className="mono">searchhub_search</td>
+              <td>执行搜索，支持 q / pageSize / providerId / timeRange / site / country / lang</td>
+            </tr>
+            <tr>
+              <td className="mono">searchhub_status</td>
+              <td>查看各供应商熔断状态、密钥可用数与调用统计</td>
+            </tr>
+            <tr>
+              <td className="mono">searchhub_providers</td>
+              <td>列出内置供应商及其能力（时间范围、站内限定、翻页等）</td>
+            </tr>
+          </tbody>
+        </table>
+        <p className="sub" style={{ marginTop: 14 }}>
+          客户端配置示例（claude_desktop_config.json）
+        </p>
+        <CodeBlock code={MCP_CONFIG} />
       </section>
 
       <section className="card">

@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { generateApiKey } from './auth.js';
 import { loadConfig } from './config.js';
 import { logDirSize, logFileInfos, logFiles, pruneLogs } from './logging.js';
+import { startMcpStdio } from './mcp.js';
+import type { KeyPatch } from './store/store.js';
 import { createHub } from './runtime.js';
 import { buildServer } from './server/app.js';
 
@@ -116,6 +119,18 @@ function logs(argv: string[]): void {
   );
 }
 
+function packageVersion(): string {
+  try {
+    return createRequire(import.meta.url)('../package.json').version as string;
+  } catch {
+    try {
+      return createRequire(import.meta.url)('./package.json').version as string;
+    } catch {
+      return '0.0.0';
+    }
+  }
+}
+
 function printHelp(): void {
   console.log(`
 ${paint(COLOR.bold, 'SearchHub CLI')} — 统一搜索网关
@@ -130,11 +145,14 @@ ${paint(COLOR.cyan, '命令')}
   keys list                   列出所有供应商密钥
   keys add <供应商> <密钥>      添加供应商密钥
   keys test <供应商> <id|标签>  测试单个密钥连通性
+  keys update <供应商> <id|标签> 修改密钥内容/标签/QPS/配额/启停
+  keys reset-usage <供应商> <id|标签> 清零用量计数并解除隔离
   keys remove <供应商> <id|标签> 删除供应商密钥
   apikey create <名称>         创建接入用的 API Key（明文只显示一次）
   apikey list                 列出 API Key
   apikey revoke <id>          吊销 API Key
   logs                        查看日志目录与按天日志文件（--prune 立即清理）
+  mcp                         以 stdio 传输启动 MCP 服务，供 AI 客户端接入
   help                        显示帮助
 
 ${paint(COLOR.cyan, '选项')}
@@ -142,15 +160,16 @@ ${paint(COLOR.cyan, '选项')}
   --host <地址>               监听地址，默认 0.0.0.0
   --home <目录>               根目录，默认 ~/.search-hub
   --data <路径>               数据文件路径，默认 <home>/store.json
-  --provider <serper|exa>     指定供应商
+  --provider <serper|tavily|exa|anysearch>  指定供应商
   --size <条数>               返回条数，默认 10
   --json                      以 JSON 输出
 
 ${paint(COLOR.cyan, '示例')}
   searchhub start --port 9000
   searchhub search "openai" --size 5
-  searchhub keys add serper xxxxxxxx --label 主key --qps 2
+  searchhub keys add serper xxxxxxxx --label 主key --qps 2 --daily-quota 1000
   searchhub apikey create 生产环境
+  searchhub mcp                # 供 Claude Desktop / Cursor 等 MCP 客户端调用
 `);
 }
 
@@ -263,7 +282,9 @@ async function keys(argv: string[]): Promise<void> {
           id: key.id.slice(0, 8),
           标签: key.label,
           状态: key.enabled ? key.state : '已禁用',
-          今日用量: key.dailyQuota ? `${key.usedToday}/${key.dailyQuota}` : key.usedToday,
+          日: key.dailyQuota ? `${key.usedToday}/${key.dailyQuota}` : `${key.usedToday}/∞`,
+          月: key.monthlyQuota ? `${key.usedMonth}/${key.monthlyQuota}` : `${key.usedMonth}/∞`,
+          总: key.totalQuota ? `${key.usedTotal}/${key.totalQuota}` : `${key.usedTotal}/∞`,
           QPS: key.qps,
           最近错误: key.lastError ?? '-',
         })),
@@ -282,11 +303,17 @@ async function keys(argv: string[]): Promise<void> {
       console.error(paint(COLOR.red, '用法: searchhub keys add <供应商> <密钥> [--label 名称]'));
       process.exit(1);
     }
+    const numeric = (name: string): number | null => {
+      const raw = flags[name];
+      return typeof raw === 'string' && raw.trim() ? Number(raw) : null;
+    };
     const key = hub.addKey(providerId, {
       label: typeof flags.label === 'string' ? flags.label : undefined,
       value: ref,
       qps: typeof flags.qps === 'string' ? Number(flags.qps) : 1,
-      dailyQuota: typeof flags.quota === 'string' ? Number(flags.quota) : null,
+      dailyQuota: numeric('quota') ?? numeric('daily-quota'),
+      monthlyQuota: numeric('monthly-quota'),
+      totalQuota: numeric('total-quota'),
     });
     console.log(paint(COLOR.green, `已添加密钥 ${key.label} (${key.id})`));
     return;
@@ -299,6 +326,43 @@ async function keys(argv: string[]): Promise<void> {
     process.exit(1);
   }
 
+  if (action === 'update') {
+    const numeric = (name: string): number | null | undefined => {
+      const raw = flags[name];
+      if (typeof raw !== 'string' || !raw.trim()) return undefined;
+      return raw.trim() === 'null' ? null : Number(raw);
+    };
+    const patch: KeyPatch = {};
+    if (typeof flags.label === 'string') patch.label = flags.label;
+    if (typeof flags.qps === 'string') patch.qps = Number(flags.qps);
+    if (flags.enabled === true) patch.enabled = true;
+    if (flags.disabled === true) patch.enabled = false;
+    for (const name of ['daily-quota', 'monthly-quota', 'total-quota']) {
+      const parsed = numeric(name);
+      if (parsed !== undefined) {
+        patch[
+          name === 'daily-quota'
+            ? 'dailyQuota'
+            : name === 'monthly-quota'
+              ? 'monthlyQuota'
+              : 'totalQuota'
+        ] = parsed;
+      }
+    }
+    if (Object.keys(patch).length === 0 && typeof flags.value !== 'string') {
+      console.error(
+        paint(
+          COLOR.red,
+          '用法: searchhub keys update <供应商> <id|标签> [--label 名称] [--value 新密钥] [--qps 2] [--daily-quota 1000] [--monthly-quota 30000] [--total-quota null] [--enabled|--disabled]',
+        ),
+      );
+      process.exit(1);
+    }
+    await hub.updateKey(providerId, key.id, patch, typeof flags.value === 'string' ? flags.value : undefined);
+    console.log(paint(COLOR.green, `已更新密钥 ${key.label}`));
+    return;
+  }
+
   if (action === 'test') {
     const result = await hub.testKey(providerId, key.id);
     console.log(
@@ -306,6 +370,12 @@ async function keys(argv: string[]): Promise<void> {
         ? paint(COLOR.green, `${key.label}: ${result.message}`)
         : paint(COLOR.red, `${key.label}: ${result.message}`),
     );
+    return;
+  }
+
+  if (action === 'reset-usage') {
+    hub.resetKeyUsage(providerId, key.id);
+    console.log(paint(COLOR.green, `已清零 ${key.label} 的日/月/总用量，并解除隔离`));
     return;
   }
 
@@ -395,7 +465,7 @@ async function main(): Promise<void> {
     case 'version':
     case '--version':
     case '-v':
-      console.log('0.1.0');
+      console.log(packageVersion());
       return;
     case 'start':
       await start(rest);
@@ -414,6 +484,12 @@ async function main(): Promise<void> {
       return;
     case 'logs':
       logs(rest);
+      return;
+    case 'mcp':
+      await startMcpStdio(createHub(loadConfig(envWithFlags(parseArgs(rest).flags))), {
+        name: 'searchhub',
+        version: packageVersion(),
+      });
       return;
     default:
       console.error(paint(COLOR.red, `未知命令: ${command}`));

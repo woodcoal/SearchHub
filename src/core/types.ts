@@ -1,6 +1,6 @@
 /** 统一搜索协议：对外只暴露这一套模型，屏蔽各家 API 差异。 */
 
-export type Capability = 'web' | 'timeRange' | 'site' | 'country' | 'lang';
+export type Capability = 'web' | 'timeRange' | 'site' | 'country' | 'lang' | 'safeSearch';
 
 export type TimeRange = 'day' | 'week' | 'month' | 'year';
 

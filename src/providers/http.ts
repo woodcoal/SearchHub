@@ -53,13 +53,35 @@ export function clampPageSize(requested: number | undefined, fallback: number, m
   return Math.min(Math.max(Math.floor(value), 1), max);
 }
 
-/** 提取各家不一致的错误描述 */
+/** 提取各家不一致的错误描述（Tavily 用 detail.error、AnySearch 用 message） */
 export function extractMessage(response: JsonResponse): string {
   const json = response.json;
-  const candidate = json?.message ?? json?.error ?? json?.detail ?? json?.msg;
+  const candidate =
+    json?.message ??
+    json?.error ??
+    json?.detail?.error ??
+    json?.detail ??
+    json?.msg;
   if (typeof candidate === 'string') return candidate;
   if (candidate && typeof candidate === 'object' && typeof candidate.message === 'string') {
     return candidate.message;
   }
   return response.text.slice(0, 200) || `HTTP ${response.status}`;
+}
+
+/** 各家返回结构五花八门，按顺序尝试常见的结果字段 */
+export function pickResults(json: Record<string, any> | undefined): any[] {
+  if (!json) return [];
+  const candidates = [
+    json.results,
+    json.data?.results,
+    json.data?.items,
+    json.data?.list,
+    json.data,
+    json.items,
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  return [];
 }

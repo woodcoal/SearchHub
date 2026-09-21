@@ -81,7 +81,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     adminToken: env.SEARCHHUB_ADMIN_TOKEN || undefined,
     seedKeys: {
       serper: splitKeys(env.SERPER_KEYS),
+      tavily: splitKeys(env.TAVILY_KEYS),
       exa: splitKeys(env.EXA_KEYS),
+      anysearch: splitKeys(env.ANYSEARCH_KEYS),
     },
   };
 }

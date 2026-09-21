@@ -80,15 +80,17 @@ curl -X POST ${BASE}/admin/keys \\
   -H 'x-admin-token: <token>' \\
   -d '{"providerId":"serper","label":"主key","value":"真实密钥","qps":2,"dailyQuota":1000}'
 
-# 修改（禁用 / 改配额 / 换密钥内容）
+# 修改：换密钥内容 + 改标签 / 启停 / 三类配额（value 留空则不改密钥内容）
 curl -X PATCH ${BASE}/admin/keys/serper/<keyId> \\
   -H 'content-type: application/json' -H 'x-admin-token: <token>' \\
-  -d '{"enabled":false,"dailyQuota":500}'
+  -d '{"value":"新的密钥内容","label":"主key","enabled":true,"qps":2,
+       "dailyQuota":1000,"monthlyQuota":30000,"totalQuota":null}'
 
-# 删除 / 解除冷却 / 连通性测试（这三个无需请求体也要带 content-type）
-curl -X DELETE ${BASE}/admin/keys/serper/<keyId> -H 'x-admin-token: <token>'
-curl -X POST ${BASE}/admin/keys/serper/<keyId>/reset -H 'content-type: application/json' -d '{}' -H 'x-admin-token: <token>'
-curl -X POST ${BASE}/admin/keys/serper/<keyId>/test  -H 'content-type: application/json' -d '{}' -H 'x-admin-token: <token>'`;
+# 解除冷却 / 清零用量 / 删除 / 连通性测试（无请求体也要带 content-type 与 {}）
+curl -X POST ${BASE}/admin/keys/serper/<keyId>/reset       -H 'content-type: application/json' -d '{}' -H 'x-admin-token: <token>'
+curl -X POST ${BASE}/admin/keys/serper/<keyId>/reset-usage -H 'content-type: application/json' -d '{}' -H 'x-admin-token: <token>'
+curl -X POST ${BASE}/admin/keys/serper/<keyId>/test        -H 'content-type: application/json' -d '{}' -H 'x-admin-token: <token>'
+curl -X DELETE ${BASE}/admin/keys/serper/<keyId> -H 'x-admin-token: <token>'`;
 
 const ERR_RESPONSE = `{
   "error": "all_providers_failed",
@@ -217,6 +219,12 @@ export default function ApiDocs() {
               <td className="mono">/api/admin/keys/:providerId/:keyId/reset</td>
               <td>登录</td>
               <td>解除冷却 / 隔离，立即恢复可用</td>
+            </tr>
+            <tr>
+              <td>POST</td>
+              <td className="mono">/api/admin/keys/:providerId/:keyId/reset-usage</td>
+              <td>登录</td>
+              <td>清零日 / 月 / 总用量计数并解除隔离</td>
             </tr>
             <tr>
               <td>POST</td>

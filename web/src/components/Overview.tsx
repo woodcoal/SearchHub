@@ -115,7 +115,7 @@ function ProviderCard({ provider }: { provider: ProviderView }) {
             <tr>
               <th>密钥</th>
               <th>状态</th>
-              <th>今日用量</th>
+              <th>日 / 月 / 总用量</th>
               <th>最近错误</th>
             </tr>
           </thead>
@@ -136,8 +136,8 @@ function ProviderCard({ provider }: { provider: ProviderView }) {
                   </span>
                 </td>
                 <td className="mono">
-                  {key.usedToday}
-                  {key.dailyQuota ? ` / ${key.dailyQuota}` : ''}
+                  {key.usedToday}/{key.dailyQuota ?? '∞'} · {key.usedMonth}/
+                  {key.monthlyQuota ?? '∞'} · {key.usedTotal}/{key.totalQuota ?? '∞'}
                 </td>
                 <td className="muted" style={{ maxWidth: 180 }}>
                   {key.lastError ?? '—'}

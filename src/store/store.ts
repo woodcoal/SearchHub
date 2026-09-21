@@ -24,7 +24,12 @@ export interface StoredKey {
   secret: string;
   enabled: boolean;
   qps: number;
+  /** 日配额，null 表示不限 */
   dailyQuota: number | null;
+  /** 月配额，null 表示不限（每月 1 号 UTC 0 点重置） */
+  monthlyQuota: number | null;
+  /** 总配额，null 表示不限（不随时间恢复，需手动调整） */
+  totalQuota: number | null;
   createdAt: string;
 }
 
@@ -55,9 +60,13 @@ export interface NewKeyInput {
   enabled?: boolean;
   qps?: number;
   dailyQuota?: number | null;
+  monthlyQuota?: number | null;
+  totalQuota?: number | null;
 }
 
-export type KeyPatch = Partial<Pick<StoredKey, 'label' | 'enabled' | 'qps' | 'dailyQuota'>>;
+export type KeyPatch = Partial<
+  Pick<StoredKey, 'label' | 'enabled' | 'qps' | 'dailyQuota' | 'monthlyQuota' | 'totalQuota'>
+>;
 
 const VERSION = 1;
 
@@ -71,11 +80,29 @@ const DEFAULT_PROVIDERS: Record<string, ProviderSettings> = {
     failureThreshold: 5,
     cooldownMs: 60_000,
   },
+  tavily: {
+    id: 'tavily',
+    enabled: true,
+    priority: 2,
+    timeoutMs: 12_000,
+    maxKeyAttempts: 3,
+    failureThreshold: 5,
+    cooldownMs: 60_000,
+  },
   exa: {
     id: 'exa',
     enabled: true,
-    priority: 2,
+    priority: 3,
     timeoutMs: 15_000,
+    maxKeyAttempts: 3,
+    failureThreshold: 5,
+    cooldownMs: 60_000,
+  },
+  anysearch: {
+    id: 'anysearch',
+    enabled: true,
+    priority: 4,
+    timeoutMs: 12_000,
     maxKeyAttempts: 3,
     failureThreshold: 5,
     cooldownMs: 60_000,
@@ -134,6 +161,8 @@ export class Store {
           enabled: true,
           qps: 1,
           dailyQuota: null,
+          monthlyQuota: null,
+          totalQuota: null,
           createdAt: new Date().toISOString(),
         });
         data.keys[providerId] = list;
@@ -221,6 +250,8 @@ export class Store {
       enabled: input.enabled ?? true,
       qps: input.qps ?? 1,
       dailyQuota: input.dailyQuota ?? null,
+      monthlyQuota: input.monthlyQuota ?? null,
+      totalQuota: input.totalQuota ?? null,
       createdAt: new Date().toISOString(),
     };
     list.push(key);

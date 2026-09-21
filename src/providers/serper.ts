@@ -16,7 +16,7 @@ const TIME_RANGE_TBS: Record<TimeRange, string> = {
 export const serperProvider: SearchProvider = {
   id: 'serper',
   displayName: 'Serper（Google SERP）',
-  docsUrl: 'https://serper.dev/api-playground',
+  docsUrl: 'https://serper.dev/',
   capabilities: ['web', 'timeRange', 'site', 'country', 'lang'],
   supportsPaging: true,
   defaultPageSize: 10,

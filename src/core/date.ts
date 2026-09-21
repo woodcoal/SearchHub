@@ -42,3 +42,13 @@ export function nextUtcMidnight(now = Date.now()): number {
 export function utcDayStamp(now = Date.now()): string {
   return new Date(now).toISOString().slice(0, 10);
 }
+
+export function utcMonthStamp(now = Date.now()): string {
+  return new Date(now).toISOString().slice(0, 7);
+}
+
+/** 下个月 1 号 00:00 UTC */
+export function nextUtcMonthStart(now = Date.now()): number {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1, 0, 0, 0, 0);
+}

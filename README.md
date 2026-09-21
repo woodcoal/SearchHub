@@ -1,8 +1,8 @@
 # SearchHub · 统一搜索网关
 
-把多家异构搜索 API（当前内置 **Serper** + **Exa**）收敛成一套统一协议，并集中管理密钥：
+把多家异构搜索 API（内置 **Serper** / **Tavily** / **Exa** / **AnySearch**）收敛成一套统一协议，并集中管理密钥：
 **密钥自动轮换、失效自动换 key、供应商整体故障自动切换、连续失败自动熔断**。
-对外提供统一的认证搜索接口，对内提供带密码登录的管理后台。
+对外提供统一的认证搜索接口与 **MCP 接口**，对内提供带密码登录的管理后台。
 
 ```
 调用方 ──x-api-key──> /api/search ──> SearchHub ──> Serper Adapter ──> KeyPool(多把 key 轮换)
@@ -80,8 +80,11 @@ npm run build                 # 之后每次改代码重新构建即可
 | `searchhub status` | 查看各供应商健康度与密钥状态 |
 | `searchhub keys list` | 列出所有供应商密钥 |
 | `searchhub keys add serper <密钥> --label 主key --qps 2` | 添加供应商密钥 |
+| `searchhub keys update serper <id\|标签> --value 新密钥 --daily-quota 1000` | 修改密钥内容 / 标签 / QPS / 配额 / 启停 |
+| `searchhub keys reset-usage serper <id\|标签>` | 清零用量计数并解除隔离 |
 | `searchhub keys test serper <id\|标签>` | 测试单个密钥连通性 |
 | `searchhub keys remove serper <id\|标签>` | 删除供应商密钥 |
+| `searchhub mcp` | 以 stdio 启动 MCP 服务，供 AI 客户端接入 |
 | `searchhub apikey create <名称>` | 创建接入用 API Key（明文只显示一次） |
 | `searchhub apikey list` / `revoke <id>` | 列出 / 吊销 API Key |
 
@@ -254,6 +257,54 @@ curl -X POST http://localhost:8787/api/search \
 - **搜索调试**：用统一协议真实调用，直观看到命中哪家供应商、用了哪把 key、是否降级
 
 界面支持**深色 / 亮色主题**，右上角一键切换，选择会记住；未手动选择时跟随系统偏好。
+
+## 内置供应商
+
+| 供应商 | 定位 | 鉴权头 | 能力 | 翻页 |
+|---|---|---|---|---|
+| `serper` | Google SERP 原始结果 | `X-API-KEY` | web / 时间范围 / 站内 / 地域 / 语言 | 支持 |
+| `tavily` | 面向 Agent 的实时搜索 | `Authorization: Bearer tvly-…` | web / 时间范围 / 站内 / 地域 / 语言 / 安全搜索 | 不支持 |
+| `exa` | 神经（语义）搜索 | `x-api-key` | web / 时间范围 / 站内 | 不支持 |
+| `anysearch` | 统一实时搜索（支持匿名降级） | `Authorization: Bearer as_sk_…` | web / 语言 / 地域（zone） | 不支持 |
+
+各家返回结构差异由适配器归一化为统一的 `SearchResult`；错误码也统一翻译为内部故障分类，
+因此「429 到底是限流还是配额耗尽」「432/433 是套餐超限」这类差异不需要调用方关心。
+
+新增供应商只需三步：写适配器 → 写 `classify()` → 注册进 `PROVIDERS`（见文末）。
+
+## 密钥配额
+
+每把密钥可以同时设置三类配额，互不冲突，留空表示不限：
+
+| 配额 | 说明 | 重置 |
+|---|---|---|
+| 日配额 `dailyQuota` | 当天累计调用上限 | 每天 UTC 0 点自动归零 |
+| 月配额 `monthlyQuota` | 当月累计调用上限 | 每月 1 号 UTC 0 点自动归零 |
+| 总配额 `totalQuota` | 累计调用上限（如一次性购买的额度包） | **不随时间恢复**，需调高配额或「重置用量」 |
+
+任一配额用尽，该密钥立即进入隔离状态并自动切换到同供应商的其它密钥；
+界面上可以直观看到 `已用/上限` 三个数字，也可用「重置用量」清零（例如充值后）。
+另有独立的 QPS 令牌桶控制瞬时速率。
+
+## MCP 接口
+
+内置 MCP（Model Context Protocol）服务，AI 客户端可直接把统一搜索当作工具调用：
+
+```json
+{
+  "mcpServers": {
+    "searchhub": { "command": "searchhub", "args": ["mcp"] }
+  }
+}
+```
+
+| 工具 | 说明 |
+|---|---|
+| `searchhub_search` | 执行搜索，参数：`q`、`pageSize`、`page`、`providerId`、`timeRange`、`site`、`country`、`lang` |
+| `searchhub_status` | 查看各供应商熔断状态、密钥可用数与调用统计 |
+| `searchhub_providers` | 列出内置供应商及其能力 |
+
+stdio 传输下 stdout 属于协议通道，因此日志统一走 stderr 与文件，不会污染协议。
 
 ## 容灾规则
 

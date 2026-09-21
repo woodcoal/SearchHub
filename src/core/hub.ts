@@ -197,10 +197,15 @@ export class SearchHub {
   }
 
   updateKey(providerId: string, keyId: string, patch: KeyPatch, value?: string): StoredKey {
-    const key = value
-      ? this.deps.store.updateKeyValue(providerId, keyId, value)
-      : this.deps.store.updateKey(providerId, keyId, patch);
+    // 密钥内容与其它字段要同时生效，不能只走其中一支
+    if (value) this.deps.store.updateKeyValue(providerId, keyId, value);
+    const hasPatch = Object.keys(patch).length > 0;
+    const key = hasPatch
+      ? this.deps.store.updateKey(providerId, keyId, patch)
+      : this.deps.store.listKeys(providerId).find((k) => k.id === keyId)!;
     this.refreshPool(providerId);
+    // 换了新密钥内容就当作一把全新的密钥，清除冷却/隔离与连续失败计数
+    if (value) this.deps.pools.get(providerId)?.resetKey(keyId);
     return key;
   }
 
@@ -211,6 +216,11 @@ export class SearchHub {
 
   resetKey(providerId: string, keyId: string): void {
     this.deps.pools.get(providerId)?.resetKey(keyId);
+  }
+
+  /** 清零用量计数并解除隔离（总配额耗尽后需要它才能继续用） */
+  resetKeyUsage(providerId: string, keyId: string): void {
+    this.deps.pools.get(providerId)?.resetUsage(keyId);
   }
 
   updateProvider(id: string, patch: ProviderPatch): ProviderSettings {
@@ -303,7 +313,9 @@ export class SearchHub {
         value,
         enabled: record.enabled,
         qps: record.qps,
-        dailyQuota: record.dailyQuota,
+        dailyQuota: record.dailyQuota ?? null,
+        monthlyQuota: record.monthlyQuota ?? null,
+        totalQuota: record.totalQuota ?? null,
       };
     });
   }
