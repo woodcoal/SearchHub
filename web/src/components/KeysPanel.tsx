@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, type KeyView, type ProviderView, type StateSnapshot } from '../api';
 import Icon, { type IconName } from './Icon';
 import { toastErr, toastOk } from './Toast';
@@ -20,9 +20,48 @@ interface TestResult {
 /** 折叠式操作菜单：默认只显示图标，避免操作栏过长 */
 function ActionMenu({ items }: { items: Array<{ key: string; icon: IconName; label: string; danger?: boolean; onPick: () => void }> }) {
   const ref = useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = useState(false);
+
+  const close = (focusSummary = false) => {
+    if (!ref.current) return;
+    ref.current.open = false;
+    setOpen(false);
+    if (focusSummary) ref.current.querySelector('summary')?.focus();
+  };
+
+  // 展开后：点击菜单外部、按 Esc、焦点移出菜单，都自动收起
+  useEffect(() => {
+    if (!open) return;
+
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!ref.current?.contains(event.target as Node)) close();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close(true);
+    };
+
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
 
   return (
-    <details className="menu" ref={ref}>
+    <details
+      className="menu"
+      ref={ref}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+      onBlur={(event) => {
+        // React 的 onBlur 走 focusout 冒泡：焦点完全离开菜单时才收起
+        const next = event.relatedTarget as Node | null;
+        if (!next || !event.currentTarget.contains(next)) close();
+      }}
+    >
       <summary className="btn sm icon-btn" title="更多操作" aria-label="更多操作">
         <Icon name="more" />
       </summary>
@@ -32,7 +71,7 @@ function ActionMenu({ items }: { items: Array<{ key: string; icon: IconName; lab
             key={item.key}
             className={item.danger ? 'menu-item danger' : 'menu-item'}
             onClick={() => {
-              if (ref.current) ref.current.open = false;
+              close();
               item.onPick();
             }}
           >
