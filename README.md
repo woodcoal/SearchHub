@@ -1,7 +1,5 @@
 # SearchHub · 统一搜索网关
 
-> 作者：木炭 &lt;woodcoal@qq.com&gt;　·　仓库：https://github.com/woodcoal/SearchHub　·　许可：MIT
-
 把多家异构搜索 API（当前内置 **Serper** + **Exa**）收敛成一套统一协议，并集中管理密钥：
 **密钥自动轮换、失效自动换 key、供应商整体故障自动切换、连续失败自动熔断**。
 对外提供统一的认证搜索接口，对内提供带密码登录的管理后台。
@@ -80,6 +78,32 @@ npm publish                   # 会自动执行 prepublishOnly（即 npm run bui
 发布内容由 `files` 字段控制，只包含 `dist/`、`web/dist/`、`README.md`、`.env.example`；
 `react` / `react-dom` 已放在 devDependencies，因为前端在构建期就打成了静态资源，运行时不需要。
 
+## 数据与日志目录
+
+未显式配置时，一切落在用户主目录下（可用 `SEARCHHUB_HOME` 整体改到别处）：
+
+```
+~/.search-hub/
+├── store.json                    供应商配置 + 密钥密文 + API Key 哈希
+└── log/
+    ├── searchhub-2026-09-21.log   按天切分，跨天自动新建
+    └── searchhub-2026-09-22.log
+```
+
+- 日志文件名为 `searchhub-YYYY-MM-DD.log`，**跨天自动切换，无需额外轮转组件**
+- 每次服务启动、以及 `searchhub logs --prune` 时会清理超过保留天数的文件
+- 保留天数：`SEARCHHUB_LOG_RETENTION_DAYS`，默认 **14 天**；设为 `0` 表示永久保留
+- 按文件名中的日期判断过期，不依赖文件 mtime，避免修改时间被改写导致误删/漏删
+- 日志同时输出到控制台，便于 `docker logs`；设为 `SEARCHHUB_LOG_STDOUT=false` 则只写文件
+
+```bash
+searchhub logs                      # 查看日志目录、保留策略与文件占用
+searchhub logs --prune              # 立即清理过期日志
+searchhub start --home D:/searchhub-data
+```
+
+敏感信息（API Key、管理令牌、密钥原文、登录密码）在日志中统一做了 redact 脱敏。
+
 ## 认证体系
 
 ### 1. 管理后台：密码登录
@@ -106,7 +130,11 @@ npm publish                   # 会自动执行 prepublishOnly（即 npm run bui
 | 变量 | 说明 |
 |---|---|
 | `PORT` / `HOST` | 服务监听地址，默认 `8787` / `0.0.0.0` |
-| `DATA_FILE` | 供应商配置、供应商密钥密文、API Key 哈希的存储文件，默认 `./data/store.json` |
+| `SEARCHHUB_HOME` | 根目录，默认 `~/.search-hub` |
+| `DATA_FILE` | 供应商配置、供应商密钥密文、API Key 哈希的存储文件，默认 `<home>/store.json` |
+| `SEARCHHUB_LOG_DIR` | 日志目录，默认 `<home>/log` |
+| `SEARCHHUB_LOG_RETENTION_DAYS` | 日志保留天数，默认 `14`；设为 `0` 永久保留 |
+| `SEARCHHUB_LOG_STDOUT` | 是否同时输出到控制台，默认 `true` |
 | `SEARCHHUB_SECRET` | 供应商密钥 AES-256-GCM 加密落盘；留空则明文存储并告警 |
 | `SEARCHHUB_ADMIN_PASSWORD` | **管理后台登录密码**，留空则随机生成并打印在启动日志 |
 | `SEARCHHUB_SESSION_TTL_MS` | 登录会话有效期，默认 8 小时 |

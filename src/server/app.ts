@@ -1,12 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import { z } from 'zod';
 import type { AppConfig } from '../config.js';
 import { generateApiKey, hashApiKey, hashPassword, SessionTokens, verifyPassword } from '../auth.js';
 import { AllProvidersFailedError } from '../core/errors.js';
 import type { SearchHub } from '../core/hub.js';
+import { createDailyLogDestination } from '../logging.js';
 
 const SearchQuerySchema = z.object({
   q: z.string().min(1, 'q 不能为空').max(2048),
@@ -65,9 +66,18 @@ const MIME: Record<string, string> = {
 };
 
 export async function buildServer(hub: SearchHub, config: AppConfig): Promise<FastifyInstance> {
+  // 日志按天写入 <homeDir>/log/searchhub-YYYY-MM-DD.log，启动时清理过期文件
+  const destination = createDailyLogDestination({
+    dir: config.logDir,
+    retentionDays: config.logRetentionDays,
+    toStdout: config.logToStdout,
+  });
+
   const app = Fastify({
+    // 日志按天切分写入文件；pino 的 stream 直接指向我们的目的地
     logger: {
       level: config.logLevel,
+      stream: destination,
       redact: [
         'req.headers["x-api-key"]',
         'req.headers.authorization',
@@ -76,7 +86,7 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
         'body.value',
         'body.secret',
       ],
-    },
+    } as FastifyServerOptions['logger'],
   });
 
   const passwordHash = hashPassword(config.adminPassword);

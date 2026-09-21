@@ -1,11 +1,21 @@
 import { randomBytes } from 'node:crypto';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
+import { resolveHome } from './logging.js';
 
 export interface AppConfig {
   port: number;
   host: string;
   logLevel: string;
+  /** 根目录，默认 ~/.search-hub */
+  homeDir: string;
+  /** 数据文件（供应商设置 + 密钥密文 + API Key 哈希） */
   dataFile: string;
+  /** 日志目录，默认 <homeDir>/log */
+  logDir: string;
+  /** 日志保留天数，<=0 表示永久保留 */
+  logRetentionDays: number;
+  /** 是否同时输出到 stdout */
+  logToStdout: boolean;
   secret: string | undefined;
   /** 管理后台登录密码（明文来自环境变量，运行时只保留哈希） */
   adminPassword: string;
@@ -29,19 +39,30 @@ function splitKeys(raw: string | undefined): string[] {
     .filter(Boolean);
 }
 
+function toInt(raw: string | undefined, fallback: number): number {
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.trunc(value) : fallback;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const port = Number(env.PORT ?? 8787);
   const providedPassword = env.SEARCHHUB_ADMIN_PASSWORD?.trim();
+  const homeDir = resolveHome(env);
 
   return {
     port: Number.isFinite(port) ? port : 8787,
     host: env.HOST ?? '0.0.0.0',
     logLevel: env.LOG_LEVEL ?? 'info',
-    dataFile: resolve(env.DATA_FILE ?? './data/store.json'),
+    homeDir,
+    dataFile: env.DATA_FILE ? resolve(env.DATA_FILE) : join(homeDir, 'store.json'),
+    logDir: env.SEARCHHUB_LOG_DIR ? resolve(env.SEARCHHUB_LOG_DIR) : join(homeDir, 'log'),
+    logRetentionDays: toInt(env.SEARCHHUB_LOG_RETENTION_DAYS, 14),
+    logToStdout: env.SEARCHHUB_LOG_STDOUT !== 'false',
     secret: env.SEARCHHUB_SECRET || undefined,
     adminPassword: providedPassword || randomBytes(9).toString('base64url'),
     adminPasswordGenerated: !providedPassword,
-    sessionTtlMs: Number(env.SEARCHHUB_SESSION_TTL_MS ?? 8 * 60 * 60 * 1000),
+    sessionTtlMs: toInt(env.SEARCHHUB_SESSION_TTL_MS, 8 * 60 * 60 * 1000),
     apiToken: env.SEARCHHUB_API_TOKEN || undefined,
     adminToken: env.SEARCHHUB_ADMIN_TOKEN || undefined,
     seedKeys: {

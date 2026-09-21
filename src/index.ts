@@ -10,7 +10,12 @@ async function main(): Promise<void> {
   try {
     await app.listen({ port: config.port, host: config.host });
     app.log.info(
-      { dataFile: config.dataFile, adminTokenSet: Boolean(config.adminToken) },
+      {
+        homeDir: config.homeDir,
+        dataFile: config.dataFile,
+        logDir: config.logDir,
+        logRetentionDays: config.logRetentionDays,
+      },
       `SearchHub 已启动: http://localhost:${config.port}`,
     );
     if (config.adminPasswordGenerated) {

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { generateApiKey } from './auth.js';
 import { loadConfig } from './config.js';
+import { logDirSize, logFileInfos, logFiles, pruneLogs } from './logging.js';
 import { createHub } from './runtime.js';
 import { buildServer } from './server/app.js';
 
@@ -76,7 +77,43 @@ function envWithFlags(flags: Record<string, string | boolean>): NodeJS.ProcessEn
   if (typeof flags.port === 'string') env.PORT = flags.port;
   if (typeof flags.host === 'string') env.HOST = flags.host;
   if (typeof flags.data === 'string') env.DATA_FILE = flags.data;
+  if (typeof flags.home === 'string') env.SEARCHHUB_HOME = flags.home;
   return env;
+}
+
+function logs(argv: string[]): void {
+  const { flags } = parseArgs(argv);
+  const config = loadConfig(envWithFlags(flags));
+
+  if (flags.prune) {
+    const removed = pruneLogs(config.logDir, config.logRetentionDays);
+    console.log(
+      removed > 0
+        ? paint(COLOR.green, `已清理 ${removed} 个过期日志文件`)
+        : paint(COLOR.dim, '没有需要清理的日志文件'),
+    );
+  }
+
+  const files = logFiles(config.logDir);
+  console.log(`${paint(COLOR.dim, '日志目录:')} ${config.logDir}`);
+  console.log(
+    `${paint(COLOR.dim, '保留策略:')} ` +
+      (config.logRetentionDays > 0 ? `${config.logRetentionDays} 天` : '永久保留'),
+  );
+  if (files.length === 0) {
+    console.log(paint(COLOR.dim, '暂无日志文件'));
+    return;
+  }
+  const infos = logFileInfos(config.logDir);
+  console.table(
+    infos.map((file) => ({
+      文件: file.name,
+      大小: `${(file.size / 1024).toFixed(1)} KB`,
+    })),
+  );
+  console.log(
+    `${paint(COLOR.dim, '合计:')} ${(logDirSize(config.logDir) / 1024).toFixed(1)} KB`,
+  );
 }
 
 function printHelp(): void {
@@ -97,12 +134,14 @@ ${paint(COLOR.cyan, '命令')}
   apikey create <名称>         创建接入用的 API Key（明文只显示一次）
   apikey list                 列出 API Key
   apikey revoke <id>          吊销 API Key
+  logs                        查看日志目录与按天日志文件（--prune 立即清理）
   help                        显示帮助
 
 ${paint(COLOR.cyan, '选项')}
   --port <端口>               服务端口，默认 8787
   --host <地址>               监听地址，默认 0.0.0.0
-  --data <路径>               数据文件路径，默认 ./data/store.json
+  --home <目录>               根目录，默认 ~/.search-hub
+  --data <路径>               数据文件路径，默认 <home>/store.json
   --provider <serper|exa>     指定供应商
   --size <条数>               返回条数，默认 10
   --json                      以 JSON 输出
@@ -132,7 +171,12 @@ async function start(argv: string[]): Promise<void> {
     );
   }
   console.log(paint(COLOR.green, `SearchHub 已启动: http://localhost:${config.port}`));
+  console.log(`${paint(COLOR.dim, '根目录:')} ${config.homeDir}`);
   console.log(`${paint(COLOR.dim, '数据文件:')} ${config.dataFile}`);
+  console.log(
+    `${paint(COLOR.dim, '日志目录:')} ${config.logDir} ` +
+      `(${config.logRetentionDays > 0 ? `保留 ${config.logRetentionDays} 天` : '永久保留'})`,
+  );
 }
 
 async function search(argv: string[]): Promise<void> {
@@ -367,6 +411,9 @@ async function main(): Promise<void> {
       return;
     case 'apikey':
       await apikey(rest);
+      return;
+    case 'logs':
+      logs(rest);
       return;
     default:
       console.error(paint(COLOR.red, `未知命令: ${command}`));
