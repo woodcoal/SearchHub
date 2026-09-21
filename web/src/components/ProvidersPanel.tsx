@@ -12,12 +12,18 @@ export default function ProvidersPanel({
   return (
     <>
       <div className="notice">
-        优先级数字越小越优先。主供应商全部密钥不可用时自动切换到下一家；连续失败达到阈值会熔断该供应商。
+        下方按 <b>权重（优先级）</b> 排列，数字越小越优先、排在越前面；改完优先级保存后会自动重新排序。
+        主供应商全部密钥不可用时自动切换到下一家；连续失败达到阈值会熔断该供应商。
         供应商级别的 <b>全局 QPS 与配额</b> 会被「密钥里留空」的字段继承，适合先统一兜底、再对个别密钥单独调整。
       </div>
       <div className="provider-grid grid-2">
-        {state.providers.map((provider) => (
-          <ProviderForm key={provider.id} settings={provider.settings} onRefresh={onRefresh} />
+        {state.providers.map((provider, index) => (
+          <ProviderForm
+            key={provider.id}
+            rank={index + 1}
+            settings={provider.settings}
+            onRefresh={onRefresh}
+          />
         ))}
       </div>
     </>
@@ -26,9 +32,12 @@ export default function ProvidersPanel({
 
 function ProviderForm({
   settings,
+  rank,
   onRefresh,
 }: {
   settings: ProviderSettings;
+  /** 按权重排序后的名次，1 表示最优先 */
+  rank: number;
   onRefresh: () => Promise<void>;
 }) {
   const [form, setForm] = useState<ProviderSettings>(settings);
@@ -74,6 +83,9 @@ function ProviderForm({
       <div className="spread">
         <h3>
           <Icon name="box" size={15} /> {settings.id}
+          <span className={`badge ${rank === 1 ? 'accent' : ''}`} title="按权重排序的名次，1 最优先">
+            #{rank}
+          </span>
         </h3>
         <label className="row" style={{ gap: 6 }}>
           <input

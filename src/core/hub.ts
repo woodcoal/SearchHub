@@ -47,6 +47,8 @@ export interface ProviderView {
 export interface HealthView {
   id: string;
   displayName: string;
+  /** 权重：越小越优先 */
+  priority: number;
   enabled: boolean;
   breaker: BreakerSnapshot;
   keySummary: { total: number; active: number; cooling: number; quarantined: number };
@@ -172,35 +174,42 @@ export class SearchHub {
     });
 
     return {
-      providers,
+      // 按权重排序：priority 越小越优先，界面上「优先的排前面」
+      providers: providers.sort(
+        (a, b) => a.settings.priority - b.settings.priority || a.id.localeCompare(b.id),
+      ),
       log: this.deps.stats.recentLog(30),
       encryptionEnabled: this.deps.encryptionEnabled,
     };
   }
 
   health(): HealthView[] {
-    return this.deps.providers.map((provider) => {
-      const settings = this.deps.store.getProvider(provider.id);
-      const keys = this.deps.pools.get(provider.id)?.snapshot() ?? [];
-      return {
-        id: provider.id,
-        displayName: provider.displayName,
-        enabled: settings?.enabled !== false,
-        breaker: this.deps.breakers.get(provider.id)?.snapshot() ?? {
-          state: 'closed',
-          failures: 0,
-          openedAt: null,
-          nextProbeAt: null,
-        },
-        keySummary: {
-          total: keys.length,
-          active: keys.filter((k) => k.state === 'active' && k.enabled).length,
-          cooling: keys.filter((k) => k.state === 'cooling').length,
-          quarantined: keys.filter((k) => k.state === 'quarantined').length,
-        },
-        stats: this.deps.stats.providerStats(provider.id),
-      };
-    });
+    return this.deps.providers
+      .map((provider) => {
+        const settings = this.deps.store.getProvider(provider.id);
+        const keys = this.deps.pools.get(provider.id)?.snapshot() ?? [];
+        return {
+          id: provider.id,
+          displayName: provider.displayName,
+          priority: settings?.priority ?? 99,
+          enabled: settings?.enabled !== false,
+          breaker: this.deps.breakers.get(provider.id)?.snapshot() ?? {
+            state: 'closed',
+            failures: 0,
+            openedAt: null,
+            nextProbeAt: null,
+          },
+          keySummary: {
+            total: keys.length,
+            active: keys.filter((k) => k.state === 'active' && k.enabled).length,
+            cooling: keys.filter((k) => k.state === 'cooling').length,
+            quarantined: keys.filter((k) => k.state === 'quarantined').length,
+          },
+          stats: this.deps.stats.providerStats(provider.id),
+        };
+      })
+      // 权重小的排前面，与 state() 一致
+      .sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
   }
 
   addKey(providerId: string, input: NewKeyInput): StoredKey {
