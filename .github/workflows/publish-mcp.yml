@@ -1,0 +1,43 @@
+name: Publish to MCP Registry
+
+# 官方 MCP Registry 的收录入口。发布后 PulseMCP 等下游目录会自动抓取。
+#
+# 认证方式为 GitHub OIDC：不需要任何 secret，身份由本仓库的 OIDC token 证明，
+# 因此只允许发布 io.github.woodcoal/* 命名空间下的服务。
+# 参考：https://github.com/modelcontextprotocol/registry/blob/main/docs/modelcontextprotocol-io/github-actions.mdx
+#
+# 注意：npm 包需要先发布对应版本（Registry 会校验包的归属与版本）。
+# 本 workflow 只负责发布 server.json，不重复发 npm。
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish server.json
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Show version
+        run: ./mcp-publisher --help
+
+      - name: Validate server.json
+        run: ./mcp-publisher validate
+
+      - name: Authenticate to the MCP Registry (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to the MCP Registry
+        run: ./mcp-publisher publish

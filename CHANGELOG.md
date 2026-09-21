@@ -20,6 +20,8 @@
   内的 HEALTHCHECK，不受影响。
 - `/api/health` 的 healthcheck 命令在 Dockerfile 与 docker-compose.yml 中重复定义，
   容易改了一处漏另一处（正是上面这个 bug 的成因）。
+- **`server.json` 的 `description` 超过官方 MCP Registry 的 100 字符上限**（原为 226 字符），
+  会导致 `mcp-publisher validate` / `publish` 被拒（422）。已压缩为 98 字符。
 
 ### 变更
 
@@ -42,6 +44,8 @@
   [providers.md](./docs/providers.md)（供应商能力矩阵、故障分类与熔断、扩展新供应商）、
   [limitations.md](./docs/limitations.md)（已知限制与适用边界）。
 - `.github/workflows/ci.yml`：类型检查 + 构建。
+- `.github/workflows/publish-mcp.yml`：打 tag 或手动触发时，用 GitHub OIDC 认证把
+  `server.json` 发布到官方 MCP Registry（无需任何 secret）。
 - `CHANGELOG.md`（本文件）。
 - `server.json`：官方 MCP Registry 服务清单。
 - `llms.txt`：便于 AI 助手准确读取并推荐本项目。

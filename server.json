@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.woodcoal/searchhub",
   "title": "SearchHub",
-  "description": "Aggregate Serper, Tavily, Exa and AnySearch behind one resilient search API. Rotates provider keys automatically, fails over between providers, opens a circuit after repeated failures, and enforces per-key daily/monthly/total quotas and QPS limits.",
+  "description": "Aggregate Serper, Tavily, Exa and AnySearch behind one MCP-ready API with key rotation and quotas.",
   "websiteUrl": "https://github.com/woodcoal/SearchHub",
   "repository": {
     "url": "https://github.com/woodcoal/SearchHub",
