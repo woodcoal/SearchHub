@@ -6,8 +6,10 @@ name: Publish to MCP Registry
 # 因此只允许发布 io.github.woodcoal/* 命名空间下的服务。
 # 参考：https://github.com/modelcontextprotocol/registry/blob/main/docs/modelcontextprotocol-io/github-actions.mdx
 #
-# 注意：npm 包需要先发布对应版本（Registry 会校验包的归属与版本）。
+# 前提：npm 包需要先发布对应版本（Registry 会校验包的归属与版本）。
 # 本 workflow 只负责发布 server.json，不重复发 npm。
+#
+# 版本号以 package.json 为准，发布前同步写入 server.json，避免两处手工对齐。
 
 on:
   push:
@@ -26,12 +28,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Sync server.json version from package.json
+        run: |
+          VERSION=$(jq -r '.version' package.json)
+          echo "package.json version: $VERSION"
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' server.json > server.json.tmp
+          mv server.json.tmp server.json
+
       - name: Install mcp-publisher
         run: |
           curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
-
-      - name: Show version
-        run: ./mcp-publisher --help
 
       - name: Validate server.json
         run: ./mcp-publisher validate
@@ -40,4 +46,17 @@ jobs:
         run: ./mcp-publisher login github-oidc
 
       - name: Publish to the MCP Registry
-        run: ./mcp-publisher publish
+        run: |
+          set +e
+          OUTPUT=$(./mcp-publisher publish 2>&1)
+          STATUS=$?
+          echo "$OUTPUT"
+          if [ "$STATUS" -eq 0 ]; then
+            exit 0
+          fi
+          # 该版本已经发布过不是错误：重复触发（例如重跑 workflow）不应让 CI 变红。
+          if echo "$OUTPUT" | grep -q "duplicate version"; then
+            echo "::notice title=Already published::该版本已在 MCP Registry 上，无需重复发布。"
+            exit 0
+          fi
+          exit "$STATUS"
