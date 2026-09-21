@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, setAdminToken } from '../api';
+import Logo from './Logo';
 
 export default function Login({ onSuccess }: { onSuccess: () => void }) {
   const [password, setPassword] = useState('');
@@ -25,8 +26,8 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
     <div className="login-wrap">
       <section className="card login-card">
         <div className="brand" style={{ marginBottom: 18 }}>
-          <div className="logo">SH</div>
-          <div>
+          <Logo size={44} />
+          <div className="brand-text">
             <h1 style={{ fontSize: 18 }}>SearchHub 管理后台</h1>
             <p>请输入管理密码</p>
           </div>
@@ -54,8 +55,8 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
         </button>
 
         <p className="muted" style={{ marginTop: 16, marginBottom: 0, fontSize: 12.5 }}>
-          密码来自环境变量 <span className="mono">SEARCHHUB_ADMIN_PASSWORD</span>；若未设置，
-          服务启动时会生成随机密码并打印在启动日志中。
+          密码来自环境变量 <span className="mono">SEARCHHUB_ADMIN_PASSWORD</span>，
+          也可在「系统设置」里修改；若都未设置，服务启动时会生成随机密码并打印在启动日志中。
         </p>
       </section>
     </div>

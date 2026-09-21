@@ -23,6 +23,13 @@ export interface KeyView extends KeyRuntimeView {
   hint: string;
   createdAt: string;
   stats: Counter;
+  /** 密钥自身配置（null 表示继承供应商全局设置，界面上用它回填编辑表单） */
+  own: {
+    qps: number | null;
+    dailyQuota: number | null;
+    monthlyQuota: number | null;
+    totalQuota: number | null;
+  };
 }
 
 export interface ProviderView {
@@ -137,6 +144,12 @@ export class SearchHub {
           hint: record ? this.mask(record) : '',
           createdAt: record?.createdAt ?? '',
           stats: this.deps.stats.keyStats(provider.id, runtime.id),
+          own: {
+            qps: record?.qps ?? null,
+            dailyQuota: record?.dailyQuota ?? null,
+            monthlyQuota: record?.monthlyQuota ?? null,
+            totalQuota: record?.totalQuota ?? null,
+          },
         };
       });
 
@@ -299,7 +312,17 @@ export class SearchHub {
     for (const id of this.deps.pools.keys()) this.refreshPool(id);
   }
 
+  /**
+   * 构造密钥池配置：密钥自身没填的字段回退到供应商级全局设置，
+   * 全局也没设则视为不限（QPS 至少为 1，否则永远取不到令牌）。
+   */
   private keysOf(providerId: string): ManagedKey[] {
+    const provider = this.deps.store.getProvider(providerId);
+    const globalQps = provider?.defaultQps ?? 1;
+    const globalDaily = provider?.defaultDailyQuota ?? null;
+    const globalMonthly = provider?.defaultMonthlyQuota ?? null;
+    const globalTotal = provider?.defaultTotalQuota ?? null;
+
     return this.deps.store.listKeys(providerId).map((record) => {
       let value = '';
       try {
@@ -312,10 +335,10 @@ export class SearchHub {
         label: record.label,
         value,
         enabled: record.enabled,
-        qps: record.qps,
-        dailyQuota: record.dailyQuota ?? null,
-        monthlyQuota: record.monthlyQuota ?? null,
-        totalQuota: record.totalQuota ?? null,
+        qps: record.qps ?? globalQps,
+        dailyQuota: record.dailyQuota ?? globalDaily,
+        monthlyQuota: record.monthlyQuota ?? globalMonthly,
+        totalQuota: record.totalQuota ?? globalTotal,
       };
     });
   }

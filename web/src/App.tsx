@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getAdminToken, setAdminToken, type StateSnapshot } from './api';
+import About from './components/About';
 import ApiDocs from './components/ApiDocs';
 import ApiKeysPanel from './components/ApiKeysPanel';
 import Guide from './components/Guide';
+import Icon, { type IconName } from './components/Icon';
 import KeysPanel from './components/KeysPanel';
 import Login from './components/Login';
+import Logo from './components/Logo';
 import Overview from './components/Overview';
 import Playground from './components/Playground';
 import ProvidersPanel from './components/ProvidersPanel';
@@ -18,18 +21,20 @@ type TabId =
   | 'playground'
   | 'settings'
   | 'api-docs'
-  | 'guide';
+  | 'guide'
+  | 'about';
 type Theme = 'dark' | 'light';
 
-const TABS: Array<{ id: TabId; label: string }> = [
-  { id: 'overview', label: '概览' },
-  { id: 'keys', label: '密钥管理' },
-  { id: 'providers', label: '供应商配置' },
-  { id: 'access', label: 'API 授权' },
-  { id: 'playground', label: '搜索调试' },
-  { id: 'settings', label: '系统设置' },
-  { id: 'api-docs', label: 'API 接口' },
-  { id: 'guide', label: '使用说明' },
+const TABS: Array<{ id: TabId; label: string; icon: IconName }> = [
+  { id: 'overview', label: '概览', icon: 'gauge' },
+  { id: 'keys', label: '密钥管理', icon: 'key' },
+  { id: 'providers', label: '供应商配置', icon: 'box' },
+  { id: 'access', label: 'API 授权', icon: 'shield' },
+  { id: 'playground', label: '搜索调试', icon: 'search' },
+  { id: 'settings', label: '系统设置', icon: 'sliders' },
+  { id: 'api-docs', label: 'API 接口', icon: 'code' },
+  { id: 'guide', label: '使用说明', icon: 'book' },
+  { id: 'about', label: '关于', icon: 'info' },
 ];
 
 function initialTheme(): Theme {
@@ -85,33 +90,56 @@ export default function App() {
     <div className="app">
       <header className="header">
         <div className="brand">
-          <div className="logo">SH</div>
-          <div>
+          <Logo size={42} />
+          <div className="brand-text">
             <h1>SearchHub</h1>
             <p>统一搜索网关 · 多供应商聚合 · 密钥轮换与自动容灾</p>
           </div>
         </div>
+
         <div className="header-tools">
           {state && (
-            <span className={`badge ${state.encryptionEnabled ? 'ok' : 'warn'}`}>
-              {state.encryptionEnabled ? '供应商密钥已加密' : '供应商密钥明文存储'}
+            <span
+              className={`badge ${state.encryptionEnabled ? 'ok' : 'warn'}`}
+              title={state.encryptionEnabled ? '供应商密钥已加密存储' : '供应商密钥明文存储，建议设置 SEARCHHUB_SECRET'}
+            >
+              <Icon name={state.encryptionEnabled ? 'shield' : 'info'} />
+              <span className="btn-label">
+                {state.encryptionEnabled ? '密钥已加密' : '密钥明文'}
+              </span>
             </span>
           )}
-          <button className="btn sm" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-            {theme === 'dark' ? '切换亮色' : '切换深色'}
-          </button>
-          <button className="btn sm" disabled={loading} onClick={() => void refresh()}>
-            {loading ? '刷新中…' : '刷新'}
+          <button
+            className="btn sm icon-btn"
+            title={theme === 'dark' ? '切换亮色主题' : '切换深色主题'}
+            aria-label="切换主题"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          >
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+            <span className="btn-label">{theme === 'dark' ? '亮色' : '深色'}</span>
           </button>
           <button
-            className="btn sm ghost"
+            className="btn sm icon-btn"
+            title="刷新数据"
+            aria-label="刷新"
+            disabled={loading}
+            onClick={() => void refresh()}
+          >
+            <Icon name="refresh" className={loading ? 'spin' : undefined} />
+            <span className="btn-label">刷新</span>
+          </button>
+          <button
+            className="btn sm icon-btn ghost"
+            title="退出登录"
+            aria-label="退出"
             onClick={() => {
               setAdminToken('');
               setAuthed(false);
               setState(null);
             }}
           >
-            退出
+            <Icon name="logout" />
+            <span className="btn-label">退出</span>
           </button>
         </div>
       </header>
@@ -123,14 +151,17 @@ export default function App() {
             className={`tab ${tab === item.id ? 'active' : ''}`}
             onClick={() => setTab(item.id)}
           >
-            {item.label}
+            <Icon name={item.icon} size={15} />
+            <span>{item.label}</span>
           </button>
         ))}
       </nav>
 
       {error && <div className="error-box">{error}</div>}
 
-      {!state ? (
+      {tab === 'about' ? (
+        <About />
+      ) : !state ? (
         <div className="spinner">加载中…</div>
       ) : tab === 'overview' ? (
         <Overview state={state} />
@@ -149,6 +180,24 @@ export default function App() {
       ) : (
         <Guide />
       )}
+
+      <footer className="footer">
+        <div className="footer-main">
+          <Logo size={18} />
+          <span>
+            SearchHub v{__APP_VERSION__} · © 2026 木炭 · MIT License
+          </span>
+        </div>
+        <div className="footer-links">
+          <a href="https://github.com/woodcoal/SearchHub" target="_blank" rel="noreferrer">
+            <Icon name="link" size={14} /> 项目仓库
+          </a>
+          <a href="mailto:woodcoal@qq.com">woodcoal@qq.com</a>
+          <button className="link-btn" onClick={() => setTab('about')}>
+            <Icon name="info" size={14} /> 关于
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }

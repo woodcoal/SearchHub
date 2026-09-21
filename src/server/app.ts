@@ -8,6 +8,8 @@ import { generateApiKey, hashApiKey, hashPassword, SessionTokens, verifyPassword
 import { AllProvidersFailedError } from '../core/errors.js';
 import type { SearchHub } from '../core/hub.js';
 import { createDailyLogDestination } from '../logging.js';
+import { PROVIDERS } from '../providers/index.js';
+import { appVersion } from '../version.js';
 
 const SearchQuerySchema = z.object({
   q: z.string().min(1, 'q 不能为空').max(2048),
@@ -24,6 +26,9 @@ const SearchBodySchema = SearchQuerySchema.extend({
   providerId: z.string().min(1).optional(),
 });
 
+/** 配额字段：null 表示继承供应商全局设置 / 不限 */
+const quotaField = z.number().int().min(1).nullable().optional();
+
 const ProviderPatchSchema = z.object({
   enabled: z.boolean().optional(),
   priority: z.number().int().min(0).max(999).optional(),
@@ -31,16 +36,18 @@ const ProviderPatchSchema = z.object({
   maxKeyAttempts: z.number().int().min(1).max(10).optional(),
   failureThreshold: z.number().int().min(1).max(100).optional(),
   cooldownMs: z.number().int().min(1000).max(3_600_000).optional(),
+  defaultQps: z.number().min(0.1).max(100).optional(),
+  defaultDailyQuota: quotaField,
+  defaultMonthlyQuota: quotaField,
+  defaultTotalQuota: quotaField,
 });
-
-const quotaField = z.number().int().min(1).nullable().optional();
 
 const NewKeySchema = z.object({
   providerId: z.string().min(1),
   label: z.string().max(64).optional(),
   value: z.string().min(1, '密钥不能为空'),
   enabled: z.boolean().optional(),
-  qps: z.number().min(0.1).max(100).optional(),
+  qps: quotaField,
   dailyQuota: quotaField,
   monthlyQuota: quotaField,
   totalQuota: quotaField,
@@ -102,6 +109,7 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
     } as FastifyServerOptions['logger'],
   });
 
+  const startedAt = new Date().toISOString();
   // 密码优先级：界面设置（settings.json） > 环境变量 > 启动时随机生成
   let passwordHash =
     config.settings.adminPasswordHash ?? hashPassword(config.adminPassword);
@@ -190,6 +198,20 @@ export async function buildServer(hub: SearchHub, config: AppConfig): Promise<Fa
         settingsFile: config.settings.path,
         passwordSource: config.settings.adminPasswordHash ? 'ui' : 'env',
         passwordUpdatedAt: config.settings.adminPasswordUpdatedAt,
+        // 「关于」页需要的信息
+        version: appVersion(),
+        node: process.version,
+        platform: `${process.platform}-${process.arch}`,
+        uptimeSec: Math.floor(process.uptime()),
+        startedAt: startedAt,
+        providers: PROVIDERS.map((p) => ({
+          id: p.id,
+          displayName: p.displayName,
+          docsUrl: p.docsUrl,
+          capabilities: [...p.capabilities],
+          supportsPaging: p.supportsPaging,
+          maxPageSize: p.maxPageSize,
+        })),
       }));
 
       admin.post('/password', async (request: any, reply: any) => {

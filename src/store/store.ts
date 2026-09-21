@@ -15,6 +15,14 @@ export interface ProviderSettings {
   failureThreshold: number;
   /** 熔断后冷却时长 */
   cooldownMs: number;
+  /** 供应商级默认 QPS：密钥未单独填写时继承 */
+  defaultQps: number;
+  /** 供应商级默认日配额：密钥未填写时继承 */
+  defaultDailyQuota: number | null;
+  /** 供应商级默认月配额 */
+  defaultMonthlyQuota: number | null;
+  /** 供应商级默认总配额 */
+  defaultTotalQuota: number | null;
 }
 
 export interface StoredKey {
@@ -23,12 +31,13 @@ export interface StoredKey {
   /** 密文（由 SecretBox 生成） */
   secret: string;
   enabled: boolean;
-  qps: number;
-  /** 日配额，null 表示不限 */
+  /** QPS，null 表示继承供应商全局设置 */
+  qps: number | null;
+  /** 日配额，null 表示继承供应商全局设置 */
   dailyQuota: number | null;
-  /** 月配额，null 表示不限（每月 1 号 UTC 0 点重置） */
+  /** 月配额，null 表示继承供应商全局设置（每月 1 号 UTC 0 点重置） */
   monthlyQuota: number | null;
-  /** 总配额，null 表示不限（不随时间恢复，需手动调整） */
+  /** 总配额，null 表示继承供应商全局设置（不随时间恢复，需手动调整） */
   totalQuota: number | null;
   createdAt: string;
 }
@@ -58,7 +67,8 @@ export interface NewKeyInput {
   label?: string;
   value: string;
   enabled?: boolean;
-  qps?: number;
+  /** 留空（null）表示继承供应商全局设置 */
+  qps?: number | null;
   dailyQuota?: number | null;
   monthlyQuota?: number | null;
   totalQuota?: number | null;
@@ -70,43 +80,38 @@ export type KeyPatch = Partial<
 
 const VERSION = 1;
 
+const PROVIDER_BASE = {
+  enabled: true,
+  maxKeyAttempts: 3,
+  failureThreshold: 5,
+  cooldownMs: 60_000,
+  defaultQps: 1,
+  defaultDailyQuota: null,
+  defaultMonthlyQuota: null,
+  defaultTotalQuota: null,
+} as const;
+
+/** 把存量配置与默认值逐字段合并，保证升级后新增字段有值 */
+function mergeProviders(
+  stored: Record<string, Partial<ProviderSettings>> | undefined,
+): Record<string, ProviderSettings> {
+  const merged: Record<string, ProviderSettings> = {};
+  for (const [id, defaults] of Object.entries(DEFAULT_PROVIDERS)) {
+    merged[id] = { ...defaults, ...(stored?.[id] ?? {}), id };
+  }
+  for (const [id, settings] of Object.entries(stored ?? {})) {
+    if (!merged[id]) {
+      merged[id] = { ...PROVIDER_BASE, priority: 99, timeoutMs: 10_000, ...settings, id };
+    }
+  }
+  return merged;
+}
+
 const DEFAULT_PROVIDERS: Record<string, ProviderSettings> = {
-  serper: {
-    id: 'serper',
-    enabled: true,
-    priority: 1,
-    timeoutMs: 10_000,
-    maxKeyAttempts: 3,
-    failureThreshold: 5,
-    cooldownMs: 60_000,
-  },
-  tavily: {
-    id: 'tavily',
-    enabled: true,
-    priority: 2,
-    timeoutMs: 12_000,
-    maxKeyAttempts: 3,
-    failureThreshold: 5,
-    cooldownMs: 60_000,
-  },
-  exa: {
-    id: 'exa',
-    enabled: true,
-    priority: 3,
-    timeoutMs: 15_000,
-    maxKeyAttempts: 3,
-    failureThreshold: 5,
-    cooldownMs: 60_000,
-  },
-  anysearch: {
-    id: 'anysearch',
-    enabled: true,
-    priority: 4,
-    timeoutMs: 12_000,
-    maxKeyAttempts: 3,
-    failureThreshold: 5,
-    cooldownMs: 60_000,
-  },
+  serper: { ...PROVIDER_BASE, id: 'serper', priority: 1, timeoutMs: 10_000 },
+  tavily: { ...PROVIDER_BASE, id: 'tavily', priority: 2, timeoutMs: 12_000 },
+  exa: { ...PROVIDER_BASE, id: 'exa', priority: 3, timeoutMs: 15_000 },
+  anysearch: { ...PROVIDER_BASE, id: 'anysearch', priority: 4, timeoutMs: 12_000 },
 };
 
 /**
@@ -135,7 +140,8 @@ export class Store {
         const parsed = JSON.parse(readFileSync(target, 'utf8')) as StoreData;
         return {
           version: VERSION,
-          providers: { ...DEFAULT_PROVIDERS, ...parsed.providers },
+          // 逐供应商深合并：老数据文件缺的新字段（如 defaultQps）用默认值补齐
+          providers: mergeProviders(parsed.providers),
           keys: parsed.keys ?? {},
           apiKeys: parsed.apiKeys ?? [],
         };
@@ -159,7 +165,7 @@ export class Store {
           label: `${providerId}-${list.length + 1}`,
           secret: this.secretBox.encrypt(value.trim()),
           enabled: true,
-          qps: 1,
+          qps: null,
           dailyQuota: null,
           monthlyQuota: null,
           totalQuota: null,
@@ -213,15 +219,7 @@ export class Store {
   /** 保证供应商设置存在（新增适配器代码后自动补齐默认配置） */
   ensureProvider(id: string): ProviderSettings {
     if (!this.data.providers[id]) {
-      this.data.providers[id] = {
-        id,
-        enabled: true,
-        priority: 99,
-        timeoutMs: 10_000,
-        maxKeyAttempts: 3,
-        failureThreshold: 5,
-        cooldownMs: 60_000,
-      };
+      this.data.providers[id] = { ...PROVIDER_BASE, id, priority: 99, timeoutMs: 10_000 };
       this.save();
     }
     return this.data.providers[id]!;
@@ -248,7 +246,7 @@ export class Store {
       label: input.label?.trim() || `${providerId}-${list.length + 1}`,
       secret: this.secretBox.encrypt(input.value),
       enabled: input.enabled ?? true,
-      qps: input.qps ?? 1,
+      qps: input.qps ?? null,
       dailyQuota: input.dailyQuota ?? null,
       monthlyQuota: input.monthlyQuota ?? null,
       totalQuota: input.totalQuota ?? null,

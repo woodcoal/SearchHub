@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, type ProviderSettings, type StateSnapshot } from '../api';
+import Icon from './Icon';
 
 export default function ProvidersPanel({
   state,
@@ -11,9 +12,10 @@ export default function ProvidersPanel({
   return (
     <>
       <div className="notice">
-        优先级数字越小越优先。主供应商全部密钥不可用时，自动切换到下一家；连续失败达到阈值会熔断该供应商，冷却结束后半开探测。
+        优先级数字越小越优先。主供应商全部密钥不可用时自动切换到下一家；连续失败达到阈值会熔断该供应商。
+        供应商级别的 <b>全局 QPS 与配额</b> 会被「密钥里留空」的字段继承，适合先统一兜底、再对个别密钥单独调整。
       </div>
-      <div className="grid-2">
+      <div className="provider-grid grid-2">
         {state.providers.map((provider) => (
           <ProviderForm key={provider.id} settings={provider.settings} onRefresh={onRefresh} />
         ))}
@@ -36,6 +38,8 @@ function ProviderForm({
   const update = <K extends keyof ProviderSettings>(key: K, value: ProviderSettings[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
+  const numberOrNull = (raw: string): number | null => (raw.trim() ? Number(raw) : null);
+
   async function save() {
     setSaving(true);
     setMessage('');
@@ -47,6 +51,10 @@ function ProviderForm({
         maxKeyAttempts: form.maxKeyAttempts,
         failureThreshold: form.failureThreshold,
         cooldownMs: form.cooldownMs,
+        defaultQps: form.defaultQps,
+        defaultDailyQuota: form.defaultDailyQuota,
+        defaultMonthlyQuota: form.defaultMonthlyQuota,
+        defaultTotalQuota: form.defaultTotalQuota,
       });
       setMessage('已保存');
       await onRefresh();
@@ -60,7 +68,9 @@ function ProviderForm({
   return (
     <section className="card">
       <div className="spread">
-        <h3>{settings.id}</h3>
+        <h3>
+          <Icon name="box" size={15} /> {settings.id}
+        </h3>
         <label className="row" style={{ gap: 6 }}>
           <input
             type="checkbox"
@@ -71,7 +81,56 @@ function ProviderForm({
         </label>
       </div>
 
-      <div className="grid-2" style={{ gap: 12, marginTop: 12 }}>
+      <p className="sub" style={{ marginTop: 10, marginBottom: 6 }}>
+        全局默认（密钥留空时继承）
+      </p>
+      <div className="grid-2 form-grid">
+        <div className="field">
+          <label>全局 QPS（每秒请求上限）</label>
+          <input
+            type="number"
+            min={0.1}
+            step={0.1}
+            value={form.defaultQps}
+            onChange={(e) => update('defaultQps', Number(e.target.value))}
+          />
+        </div>
+        <div className="field">
+          <label>全局日配额</label>
+          <input
+            type="number"
+            min={1}
+            placeholder="不限"
+            value={form.defaultDailyQuota ?? ''}
+            onChange={(e) => update('defaultDailyQuota', numberOrNull(e.target.value))}
+          />
+        </div>
+        <div className="field">
+          <label>全局月配额</label>
+          <input
+            type="number"
+            min={1}
+            placeholder="不限"
+            value={form.defaultMonthlyQuota ?? ''}
+            onChange={(e) => update('defaultMonthlyQuota', numberOrNull(e.target.value))}
+          />
+        </div>
+        <div className="field">
+          <label>全局总配额</label>
+          <input
+            type="number"
+            min={1}
+            placeholder="不限"
+            value={form.defaultTotalQuota ?? ''}
+            onChange={(e) => update('defaultTotalQuota', numberOrNull(e.target.value))}
+          />
+        </div>
+      </div>
+
+      <p className="sub" style={{ marginTop: 16, marginBottom: 6 }}>
+        调度与容灾
+      </p>
+      <div className="grid-2 form-grid">
         <div className="field">
           <label>优先级（越小越优先）</label>
           <input
@@ -124,10 +183,10 @@ function ProviderForm({
 
       <div className="row" style={{ marginTop: 14 }}>
         <button className="btn primary" disabled={saving} onClick={() => void save()}>
-          {saving ? '保存中…' : '保存配置'}
+          <Icon name="check" /> {saving ? '保存中…' : '保存配置'}
         </button>
         <button className="btn ghost" onClick={() => setForm(settings)}>
-          还原
+          <Icon name="rotate" /> 还原
         </button>
         {message && <span className="muted">{message}</span>}
       </div>

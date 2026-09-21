@@ -32,6 +32,13 @@ export interface KeyView {
   hint: string;
   createdAt: string;
   stats: Counter;
+  /** 密钥自身配置，null 表示继承供应商全局设置 */
+  own: {
+    qps: number | null;
+    dailyQuota: number | null;
+    monthlyQuota: number | null;
+    totalQuota: number | null;
+  };
 }
 
 export interface ProviderSettings {
@@ -42,6 +49,11 @@ export interface ProviderSettings {
   maxKeyAttempts: number;
   failureThreshold: number;
   cooldownMs: number;
+  /** 供应商级默认值：密钥未填写时继承 */
+  defaultQps: number;
+  defaultDailyQuota: number | null;
+  defaultMonthlyQuota: number | null;
+  defaultTotalQuota: number | null;
 }
 
 export interface ProviderView {
@@ -150,6 +162,19 @@ export interface SystemSettings {
   settingsFile: string;
   passwordSource: 'ui' | 'env';
   passwordUpdatedAt: string | null;
+  version: string;
+  node: string;
+  platform: string;
+  uptimeSec: number;
+  startedAt: string;
+  providers: Array<{
+    id: string;
+    displayName: string;
+    docsUrl: string;
+    capabilities: string[];
+    supportsPaging: boolean;
+    maxPageSize: number;
+  }>;
 }
 
 export interface MigrationResult {
@@ -218,7 +243,8 @@ export const api = {
     providerId: string;
     label?: string;
     value: string;
-    qps?: number;
+    /** null 表示继承供应商全局设置 */
+    qps?: number | null;
     dailyQuota?: number | null;
     monthlyQuota?: number | null;
     totalQuota?: number | null;
@@ -234,7 +260,7 @@ export const api = {
     patch: {
       label?: string;
       enabled?: boolean;
-      qps?: number;
+      qps?: number | null;
       dailyQuota?: number | null;
       monthlyQuota?: number | null;
       totalQuota?: number | null;

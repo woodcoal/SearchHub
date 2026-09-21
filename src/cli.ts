@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { generateApiKey } from './auth.js';
 import { loadConfig } from './config.js';
 import { logDirSize, logFileInfos, logFiles, pruneLogs } from './logging.js';
 import { startMcpStdio } from './mcp.js';
 import type { KeyPatch } from './store/store.js';
+import { appVersion } from './version.js';
 import { createHub } from './runtime.js';
 import { buildServer } from './server/app.js';
 
@@ -117,18 +117,6 @@ function logs(argv: string[]): void {
   console.log(
     `${paint(COLOR.dim, '合计:')} ${(logDirSize(config.logDir) / 1024).toFixed(1)} KB`,
   );
-}
-
-function packageVersion(): string {
-  try {
-    return createRequire(import.meta.url)('../package.json').version as string;
-  } catch {
-    try {
-      return createRequire(import.meta.url)('./package.json').version as string;
-    } catch {
-      return '0.0.0';
-    }
-  }
 }
 
 function printHelp(): void {
@@ -310,7 +298,7 @@ async function keys(argv: string[]): Promise<void> {
     const key = hub.addKey(providerId, {
       label: typeof flags.label === 'string' ? flags.label : undefined,
       value: ref,
-      qps: typeof flags.qps === 'string' ? Number(flags.qps) : 1,
+      qps: typeof flags.qps === 'string' ? Number(flags.qps) : null,
       dailyQuota: numeric('quota') ?? numeric('daily-quota'),
       monthlyQuota: numeric('monthly-quota'),
       totalQuota: numeric('total-quota'),
@@ -465,7 +453,7 @@ async function main(): Promise<void> {
     case 'version':
     case '--version':
     case '-v':
-      console.log(packageVersion());
+      console.log(appVersion());
       return;
     case 'start':
       await start(rest);
@@ -488,7 +476,7 @@ async function main(): Promise<void> {
     case 'mcp':
       await startMcpStdio(createHub(loadConfig(envWithFlags(parseArgs(rest).flags))), {
         name: 'searchhub',
-        version: packageVersion(),
+        version: appVersion(),
       });
       return;
     default:
