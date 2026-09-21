@@ -8,13 +8,13 @@
     "url": "https://github.com/woodcoal/SearchHub",
     "source": "github"
   },
-  "version": "0.1.9",
+  "version": "0.1.10",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "searchhub",
-      "version": "0.1.9",
+      "version": "0.1.10",
       "runtimeHint": "npx",
       "packageArguments": [
         {
